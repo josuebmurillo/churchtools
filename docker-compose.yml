@@ -1,0 +1,178 @@
+services:
+  gateway:
+    build: ./gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_NAME=gateway
+    depends_on:
+      - people
+      - ministries
+      - events
+      - music
+      - comms
+      - groups
+      - volunteers
+      - calendar
+      - security
+      - reports
+      - consejeria
+      - multitracks
+      - app-db
+
+  people:
+    build: ./services/people
+    ports:
+      - "8001:8000"
+    environment:
+      - SERVICE_NAME=people
+      - PEOPLE_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  ministries:
+    build: ./services/ministries
+    ports:
+      - "8002:8000"
+    environment:
+      - SERVICE_NAME=ministries
+      - MINISTRIES_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  events:
+    build: ./services/events
+    ports:
+      - "8003:8000"
+    environment:
+      - SERVICE_NAME=events
+      - EVENTS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  music:
+    build: ./services/music
+    ports:
+      - "8004:8000"
+    environment:
+      - SERVICE_NAME=music
+      - MUSIC_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  comms:
+    build: ./services/comms
+    ports:
+      - "8005:8000"
+    environment:
+      - SERVICE_NAME=comms
+      - COMMS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  groups:
+    build: ./services/groups
+    ports:
+      - "8006:8000"
+    environment:
+      - SERVICE_NAME=groups
+      - GROUPS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  volunteers:
+    build: ./services/volunteers
+    ports:
+      - "8007:8000"
+    environment:
+      - SERVICE_NAME=volunteers
+      - VOLUNTEERS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  calendar:
+    build: ./services/calendar
+    ports:
+      - "8008:8000"
+    environment:
+      - SERVICE_NAME=calendar
+      - CALENDAR_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  security:
+    build: ./services/security
+    ports:
+      - "8009:8000"
+    environment:
+      - SERVICE_NAME=security
+      - SECURITY_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  reports:
+    build: ./services/reports
+    ports:
+      - "8010:8000"
+    environment:
+      - SERVICE_NAME=reports
+      - REPORTS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  pdfs:
+    build: ./services/pdfs
+    ports:
+      - "8011:8000"
+    environment:
+      - SERVICE_NAME=pdfs
+      - PDFS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+      - PDFS_STORAGE_DIR=/data/pdfs
+    volumes:
+      - pdfs_data:/data/pdfs
+    depends_on:
+      - app-db
+
+  consejeria:
+    build: ./services/consejeria
+    ports:
+      - "8012:8000"
+    environment:
+      - SERVICE_NAME=consejeria
+      - CONSEJERIA_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+    depends_on:
+      - app-db
+
+  multitracks:
+    build: ./services/multitracks
+    ports:
+      - "8013:8000"
+    environment:
+      - SERVICE_NAME=multitracks
+      - MULTITRACKS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
+      - MULTITRACKS_STORAGE_DIR=/data/multitracks
+      - MULTITRACKS_PUBLIC_BASE_PATH=/multitracks
+      - MULTITRACKS_WHISPER_DEVICE=cpu
+      - MULTITRACKS_WHISPERX_ENABLED=false
+      - MULTITRACKS_ANALYSIS_PASS_1_SECONDS=120
+      - MULTITRACKS_ANALYSIS_PASS_2_SECONDS=540
+    volumes:
+      - multitracks_data:/data/multitracks
+    depends_on:
+      - app-db
+
+  app-db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=church_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - app_db_data:/var/lib/postgresql/data
+
+volumes:
+  app_db_data:
+  pdfs_data:
+  multitracks_data:
