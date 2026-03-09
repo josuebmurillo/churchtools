@@ -920,7 +920,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     if (waveformBySongId[songId]) return
     if (currentSongStems.length === 0) return
     // Evitar fetch si la canción no tiene stems (nunca se subió ZIP)
-    if (!(stemsBySongId.get(songId)?.length > 0)) return
+    if (!((stemsBySongId.get(songId)?.length ?? 0) > 0)) return
 
     let cancelled = false
 
@@ -966,7 +966,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     const songId = practiceSong?.songId
     if (!songId) return
     // Evitar fetch si la canción no tiene stems (nunca se subió ZIP)
-    if (!(stemsBySongId.get(songId)?.length > 0)) return
+    if (!((stemsBySongId.get(songId)?.length ?? 0) > 0)) return
 
     let cancelled = false
     let retries = 0
@@ -1164,7 +1164,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     const songId = practiceSong?.songId
     if (!songId) return
     // Evitar fetch si la canción no tiene stems (nunca se subió ZIP)
-    if (!(stemsBySongId.get(songId)?.length > 0)) return
+    if (!((stemsBySongId.get(songId)?.length ?? 0) > 0)) return
 
     let cancelled = false
     let polls = 0
@@ -1222,7 +1222,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     const songId = practiceSong?.songId
     if (!songId) return
     // Evitar fetch si la canción no tiene stems (nunca se subió ZIP)
-    if (!(stemsBySongId.get(songId)?.length > 0)) return
+    if (!((stemsBySongId.get(songId)?.length ?? 0) > 0)) return
 
     let cancelled = false
     let retries = 0
