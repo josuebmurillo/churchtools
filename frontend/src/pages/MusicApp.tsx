@@ -1,10 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useStemStore } from '../store/stemStore'
+import type { StemState } from '../store/stemStore'
+import WaveSurfer from 'wavesurfer.js'
+// import StemWaveform, { type SectionMarker as StemSectionMarker } from '../components/StemWaveform'
 import Panel from '../components/Panel'
 import MusicHeader from '../components/MusicHeader'
 import MusicSidebar, { type MusicSection } from '../components/MusicSidebar'
 import { useApiData } from '../hooks/useApiData'
 import { buildUrl, fetchJson, postJson } from '../services/api'
-import type { Event, EventSchedule, MultitrackAnalysisStatus, MultitrackGuideAudio, MultitrackSongStructure, MultitrackStem, MultitrackStructureEntry, MultitrackWaveform, Repertoire, RepertoireSong, Song } from '../types'
+import type { Event, EventSchedule, MultitrackAnalysisStatus, MultitrackGuideAudio, MultitrackSongStructure, MultitrackStructureEntry, MultitrackWaveform, Repertoire, RepertoireSong, Song } from '../types'
 import { buildCalendarDays } from '../utils/calendar'
 
 type MusicAppProps = {
@@ -45,15 +50,15 @@ type SectionMarker = {
   label: string
 }
 
-const DRIFT_THRESHOLD_SECONDS = 0.03
-const REBUFFER_FLOOR_SECONDS = 0.28
-const REBUFFER_RESUME_SECONDS = 0.85
-const REBUFFER_CONSECUTIVE_TICKS = 4
-const MIN_READY_STEMS_TO_START = 4
-const REBUFFER_GRACE_MS = 1800
-const INITIAL_PLAY_PARALLEL = 6
-const LATE_JOIN_MIN_BUFFER_SECONDS = 0.2
-const LATE_JOIN_FORCE_AFTER_MS = 2500
+const DRIFT_THRESHOLD_SECONDS = 0.015
+const REBUFFER_FLOOR_SECONDS = 0.18
+const REBUFFER_RESUME_SECONDS = 0.45
+const REBUFFER_CONSECUTIVE_TICKS = 2
+const MIN_READY_STEMS_TO_START = 2
+const REBUFFER_GRACE_MS = 900
+const INITIAL_PLAY_PARALLEL = 8
+const LATE_JOIN_MIN_BUFFER_SECONDS = 0.12
+const LATE_JOIN_FORCE_AFTER_MS = 1200
 const STEM_END_TOLERANCE_SECONDS = 0.08
 const WAVEFORM_BINS = 180
 const GUIDE_FETCH_RETRIES = 12
@@ -75,10 +80,79 @@ type PlaybackTuning = {
 }
 
 const MusicApp = ({ onLogout }: MusicAppProps) => {
+  // Estados y setters para mixer y stems
+  const [stemMixerConfig, setStemMixerConfig] = useState<Record<number, StemMixerConfig>>({});
+  const [stemLoadStatusById, setStemLoadStatusById] = useState<Record<number, StemLoadStatus>>({});
+  const [stemBufferedSecondsById, setStemBufferedSecondsById] = useState<Record<number, number>>({});
+  const [mixerPosition, setMixerPosition] = useState(0);
+  const [mixerPlaying, setMixerPlaying] = useState(false);
+  const [mixerDuration, setMixerDuration] = useState(0);
+  const [mixerRebuffering, setMixerRebuffering] = useState(false);
+  const [waveformBySongId, setWaveformBySongId] = useState<Record<number, number[]>>({});
+  const [waveformLoadingSongId, setWaveformLoadingSongId] = useState<number | null>(null);
   const events = useApiData<Event[]>(buildUrl('events', '/events'), [])
   const schedules = useApiData<EventSchedule[]>(buildUrl('events', '/event-schedules'), [])
   const songs = useApiData<Song[]>(buildUrl('music', '/songs'), [])
-  const multitrackStems = useApiData<MultitrackStem[]>(buildUrl('multitracks', '/stems'), [])
+  // Usar react-query para obtener stems
+  // Tipar correctamente la respuesta de react-query
+  type MultitrackStem = {
+    id: number | string;
+    song_id?: number;
+    stem_name?: string;
+    url: string;
+    media_url?: string;
+    format?: string;
+    [key: string]: any;
+  };
+
+  const { data: multitrackStems = [] } = useQuery<MultitrackStem[]>({
+    queryKey: ['multitrackStems'],
+    queryFn: () => fetchJson(buildUrl('multitracks', '/stems')),
+    staleTime: 1000 * 60,
+  });
+
+  // Guardar stems en zustand store
+  const setStems = useStemStore((state: StemState) => state.setStems);
+  useEffect(() => {
+    if (Array.isArray(multitrackStems) && multitrackStems.length > 0) {
+      setStems(
+        multitrackStems.map((stem) => ({
+          id: String(stem.id),
+          url: stem.media_url || stem.url,
+          volume: 1,
+          muted: false,
+          solo: false,
+          loaded: false,
+        }))
+      );
+    }
+  }, [multitrackStems, setStems]);
+
+  // Ejemplo de integración con wavesurfer.js para multipista
+  const stems = useStemStore((state: StemState) => state.stems);
+  const wavesurferRefs = useRef<Record<string, WaveSurfer>>({});
+
+  useEffect(() => {
+    stems.forEach((stem: typeof stems[number]) => {
+      if (!wavesurferRefs.current[stem.id] && stem.url) {
+        const container = document.getElementById(`waveform-${stem.id}`);
+        if (container) {
+          wavesurferRefs.current[stem.id] = WaveSurfer.create({
+            container,
+            waveColor: '#a0aec0',
+            progressColor: '#3182ce',
+            cursorColor: '#2d3748',
+            height: 60,
+            url: stem.url,
+          });
+        }
+      }
+    });
+    return () => {
+      Object.values(wavesurferRefs.current).forEach((ws) => ws.destroy());
+      wavesurferRefs.current = {};
+    };
+  }, [stems]);
   const repertoires = useApiData<Repertoire[]>(buildUrl('music', '/repertoires'), [])
   const repertoireSongs = useApiData<RepertoireSong[]>(buildUrl('music', '/repertoire-songs'), [])
 
@@ -110,15 +184,10 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   const [uploadClockTick, setUploadClockTick] = useState(0)
   const [smoothedEtaSeconds, setSmoothedEtaSeconds] = useState<number | null>(null)
   const [deletingMultitracksSongId, setDeletingMultitracksSongId] = useState<number | null>(null)
-  const [mixerPlaying, setMixerPlaying] = useState(false)
-  const [mixerPosition, setMixerPosition] = useState(0)
-  const [mixerDuration, setMixerDuration] = useState(0)
-  const [mixerRebuffering, setMixerRebuffering] = useState(false)
-  const [stemMixerConfig, setStemMixerConfig] = useState<Record<number, StemMixerConfig>>({})
-  const [stemLoadStatusById, setStemLoadStatusById] = useState<Record<number, StemLoadStatus>>({})
-  const [stemBufferedSecondsById, setStemBufferedSecondsById] = useState<Record<number, number>>({})
-  const [waveformBySongId, setWaveformBySongId] = useState<Record<number, number[]>>({})
-  const [waveformLoadingSongId, setWaveformLoadingSongId] = useState<number | null>(null)
+  // El manejo de mixerPlaying, mixerPosition, etc. puede migrarse a zustand si se requiere estado global
+    // Renderizar formas de onda de stems
+    // ...en el JSX, ejemplo:
+    // stems.map(stem => <div key={stem.id} id={`waveform-${stem.id}`} />)
   const [structureMarkersBySongId, setStructureMarkersBySongId] = useState<Record<number, SectionMarker[] | null>>({})
   const [guideAudioBySongId, setGuideAudioBySongId] = useState<Record<number, MultitrackGuideAudio | null>>({})
   const [analysisStatusBySongId, setAnalysisStatusBySongId] = useState<Record<number, MultitrackAnalysisStatus | null>>({})
@@ -680,14 +749,16 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   }, [songs.data])
 
   const stemsBySongId = useMemo(() => {
-    const map = new Map<number, MultitrackStem[]>()
-    multitrackStems.data.forEach((stem) => {
-      const current = map.get(stem.song_id) ?? []
+    const map = new Map<number, any[]>()
+    multitrackStems.forEach((stem: any) => {
+      const songId = typeof stem.song_id === 'number' ? stem.song_id : Number(stem.song_id)
+      if (!Number.isFinite(songId)) return
+      const current = map.get(songId) ?? []
       current.push(stem)
-      map.set(stem.song_id, current)
+      map.set(songId, current)
     })
     return map
-  }, [multitrackStems.data])
+  }, [multitrackStems])
 
   const setlistEditorItems = useMemo<SetlistEditorItem[]>(() => {
     if (!selectedRepertoire) return []
@@ -823,13 +894,11 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   const currentSongStems = useMemo(() => {
     if (!practiceSong) return []
     const stems = stemsBySongId.get(practiceSong.songId) ?? []
-    const sortedStems = [...stems].sort((a, b) => a.stem_name.localeCompare(b.stem_name))
-
+    const sortedStems = [...stems].sort((a, b) => (a.stem_name ?? '').localeCompare(b.stem_name ?? ''))
     const guide = guideAudioBySongId[practiceSong.songId] ?? null
     if (!guide?.url) {
       return sortedStems
     }
-
     const guideFormat = guide.content_type?.includes('mpeg') ? 'mp3' : 'wav'
     const guideStem: MultitrackStem = {
       id: -(practiceSong.songId + GUIDE_SYNTHETIC_STEM_OFFSET),
@@ -841,28 +910,32 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       url: guide.url,
       created_at: new Date(0).toISOString(),
     }
-
     return [guideStem, ...sortedStems]
   }, [practiceSong, stemsBySongId, guideAudioBySongId])
 
+  // Utilidad para filtrar stems activos (no error)
+  function getActiveStems(): typeof currentSongStems {
+    return currentSongStems.filter((stem: any) => stemLoadStatusById[Number(stem.id)] !== 'error');
+  }
+
   const hasSoloEnabled = useMemo(
-    () => Object.values(stemMixerConfig).some((item) => item.solo),
+    () => Object.values(stemMixerConfig ?? {}).some((item: any) => !!item && !!item.solo),
     [stemMixerConfig]
   )
 
   const loadedCurrentStemsCount = useMemo(
-    () => currentSongStems.filter((stem) => stemLoadStatusById[stem.id] !== 'error').length,
+    () => currentSongStems.filter((stem) => stemLoadStatusById?.[Number(stem.id)] !== 'error').length,
     [currentSongStems, stemLoadStatusById]
   )
 
   const erroredCurrentStemsCount = useMemo(
-    () => currentSongStems.filter((stem) => stemLoadStatusById[stem.id] === 'error').length,
+    () => currentSongStems.filter((stem) => stemLoadStatusById?.[Number(stem.id)] === 'error').length,
     [currentSongStems, stemLoadStatusById]
   )
 
   const bufferedReadyCount = useMemo(
     () => currentSongStems.filter((stem) => {
-      const bufferedSeconds = stemBufferedSecondsById[stem.id] ?? 0
+      const bufferedSeconds = stemBufferedSecondsById?.[Number(stem.id)] ?? 0
       return bufferedSeconds >= autoBufferTargetSeconds
     }).length,
     [currentSongStems, stemBufferedSecondsById, autoBufferTargetSeconds]
@@ -871,7 +944,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   const minBufferedCurrentSeconds = useMemo(() => {
     if (currentSongStems.length === 0) return 0
     return currentSongStems.reduce((minimum, stem) => {
-      const current = stemBufferedSecondsById[stem.id] ?? 0
+      const current = stemBufferedSecondsById?.[Number(stem.id)] ?? 0
       return Math.min(minimum, current)
     }, Number.POSITIVE_INFINITY)
   }, [currentSongStems, stemBufferedSecondsById])
@@ -879,8 +952,8 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   const allCurrentStemsReady = currentSongStems.length > 0 && bufferedReadyCount === currentSongStems.length
   const minimumReadyToStart = currentSongStems.length > 0
     ? Math.max(
-      Math.min(playbackTuning.minReadyToStartBase, currentSongStems.length),
-      Math.ceil(currentSongStems.length * 0.85)
+      Math.min(MIN_READY_STEMS_TO_START, currentSongStems.length),
+      Math.ceil(currentSongStems.length * 0.7)
     )
     : 0
   const canStartMixer = currentSongStems.length > 0 && bufferedReadyCount >= minimumReadyToStart
@@ -1312,14 +1385,14 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   const ensureStemAudioChain = async (stem: MultitrackStem, resumeForPlayback = false) => {
     const context = await getAudioContext(resumeForPlayback)
 
-    let audio = stemAudioRefs.current[stem.id]
+    let audio = stemAudioRefs.current[Number(stem.id)]
     if (!audio) {
       audio = new Audio(normalizeApiMediaUrl(stem.url))
       audio.preload = 'auto'
       audio.crossOrigin = 'anonymous'
-      stemAudioRefs.current[stem.id] = audio
+      stemAudioRefs.current[Number(stem.id)] = audio
 
-      const handleProgress = () => updateStemBufferState(stem.id, audio as HTMLAudioElement)
+      const handleProgress = () => updateStemBufferState(Number(stem.id), audio as HTMLAudioElement)
       audio.addEventListener('loadedmetadata', handleProgress)
       audio.addEventListener('canplay', handleProgress)
       audio.addEventListener('canplaythrough', handleProgress)
@@ -1333,9 +1406,9 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       })
     }
 
-    let mediaNode = stemMediaSourceRefs.current[stem.id]
-    let gainNode = stemGainRefs.current[stem.id]
-    let analyserNode = stemAnalyserRefs.current[stem.id]
+    let mediaNode = stemMediaSourceRefs.current[Number(stem.id)]
+    let gainNode = stemGainRefs.current[Number(stem.id)]
+    let analyserNode = stemAnalyserRefs.current[Number(stem.id)]
 
     if (!mediaNode || !gainNode || !analyserNode) {
       mediaNode = context.createMediaElementSource(audio)
@@ -1348,10 +1421,10 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       gainNode.connect(analyserNode)
       analyserNode.connect(context.destination)
 
-      stemMediaSourceRefs.current[stem.id] = mediaNode
-      stemGainRefs.current[stem.id] = gainNode
-      stemAnalyserRefs.current[stem.id] = analyserNode
-      stemMeterDataRefs.current[stem.id] = new Uint8Array(analyserNode.fftSize)
+      stemMediaSourceRefs.current[Number(stem.id)] = mediaNode
+      stemGainRefs.current[Number(stem.id)] = gainNode
+      stemAnalyserRefs.current[Number(stem.id)] = analyserNode
+      stemMeterDataRefs.current[Number(stem.id)] = new Uint8Array(analyserNode.fftSize)
     }
 
     return { audio, gainNode, analyserNode }
@@ -1382,7 +1455,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
 
   const getReferenceAudio = () => {
     const audios = currentSongStems
-      .map((stem) => stemAudioRefs.current[stem.id])
+      .map((stem) => stemAudioRefs.current[Number(stem.id)])
       .filter((audio): audio is HTMLAudioElement => Boolean(audio))
 
     const active = audios.find((audio) => !audio.paused && !isStemEnded(audio))
@@ -1396,7 +1469,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
 
   const getStemSyncSnapshot = () => {
     const playing = currentSongStems
-      .map((stem) => stemAudioRefs.current[stem.id])
+      .map((stem) => stemAudioRefs.current[Number(stem.id)])
       .filter((audio): audio is HTMLAudioElement => Boolean(audio) && !audio.paused && !isStemEnded(audio))
 
     if (playing.length === 0) {
@@ -1423,7 +1496,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
 
   const alignPlayingStems = (referenceTime: number) => {
     currentSongStems.forEach((stem) => {
-      const audio = stemAudioRefs.current[stem.id]
+      const audio = stemAudioRefs.current[Number(stem.id)]
       if (!audio) return
       const drift = Math.abs(audio.currentTime - referenceTime)
       if (drift > DRIFT_THRESHOLD_SECONDS) {
@@ -1432,16 +1505,16 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     })
   }
 
+  // Ahora requiere que TODAS las pistas tengan buffer suficiente para reanudar
   const hasResumeBuffer = () => {
-    const readyCount = currentSongStems.filter((stem) => {
-      const audio = stemAudioRefs.current[stem.id]
-      if (!audio) return false
-      const duration = Number.isFinite(audio.duration) ? audio.duration : 0
-      const required = duration > 0 ? Math.min(playbackTuning.rebufferResumeSeconds, duration) : playbackTuning.rebufferResumeSeconds
-      return getBufferedAheadSeconds(audio) >= required
-    }).length
-
-    return readyCount >= minimumReadyToStart
+    if (currentSongStems.length === 0) return false;
+    return currentSongStems.every((stem) => {
+      const audio = stemAudioRefs.current[Number(stem.id)];
+      if (!audio) return false;
+      const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+      const required = duration > 0 ? Math.min(playbackTuning.rebufferResumeSeconds, duration) : playbackTuning.rebufferResumeSeconds;
+      return getBufferedAheadSeconds(audio) >= required;
+    });
   }
 
   const triggerRebuffer = (resumePosition: number) => {
@@ -1452,16 +1525,18 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     setActionStatus('Buffer bajo detectado. Rebufferizando pistas...')
 
     stopCurrentSources()
-    Object.values(stemAudioRefs.current).forEach((audio) => {
+    getActiveStems().forEach((stem) => {
+      const audio = stemAudioRefs.current[stem.id]
+      if (!audio) return
       const duration = Number.isFinite(audio.duration) ? audio.duration : 0
       const nextPosition = duration > 0 ? Math.min(resumePosition, duration) : resumePosition
       audio.currentTime = Math.max(0, nextPosition)
     })
 
-    currentSongStems.forEach((stem) => {
+    getActiveStems().forEach((stem) => {
       const audio = stemAudioRefs.current[stem.id]
       if (!audio) return
-      updateStemBufferState(stem.id, audio)
+      updateStemBufferState(Number(stem.id), audio)
     })
 
     setMixerPlaying(false)
@@ -1499,17 +1574,17 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
 
   const updateMeters = () => {
     currentSongStems.forEach((stem) => {
-      const analyser = stemAnalyserRefs.current[stem.id]
+      const analyser = stemAnalyserRefs.current[Number(stem.id)]
       if (!analyser) {
-        const fill = stemMeterFillRefs.current[stem.id]
+        const fill = stemMeterFillRefs.current[Number(stem.id)]
         if (fill) fill.style.height = '4%'
         return
       }
 
-      let data = stemMeterDataRefs.current[stem.id]
+      let data = stemMeterDataRefs.current[Number(stem.id)]
       if (!data || data.length !== analyser.fftSize) {
         data = new Uint8Array(analyser.fftSize)
-        stemMeterDataRefs.current[stem.id] = data
+        stemMeterDataRefs.current[Number(stem.id)] = data
       }
       analyser.getByteTimeDomainData(data as unknown as Uint8Array<ArrayBuffer>)
 
@@ -1528,7 +1603,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       const normalizedDb = (db - dbFloor) / -dbFloor
       const combined = Math.max(normalizedDb, peakAbs)
       const meterLevel = Math.max(0, Math.min(1, Math.pow(combined, 0.82)))
-      const fill = stemMeterFillRefs.current[stem.id]
+      const fill = stemMeterFillRefs.current[Number(stem.id)]
       if (fill) {
         fill.style.height = `${Math.max(4, meterLevel * 100)}%`
       }
@@ -1569,8 +1644,8 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   useEffect(() => {
     const nextConfig: Record<number, StemMixerConfig> = {}
     currentSongStems.forEach((stem) => {
-      const previous = stemMixerConfig[stem.id]
-      nextConfig[stem.id] = previous ?? { volume: 1, solo: false, muted: false }
+      const previous = stemMixerConfig[Number(stem.id)]
+      nextConfig[Number(stem.id)] = previous ?? { volume: 1, solo: false, muted: false }
     })
     setStemMixerConfig(nextConfig)
 
@@ -1596,7 +1671,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     if (currentSongStems.length > 0) {
       const nextLoadStatus: Record<number, StemLoadStatus> = {}
       currentSongStems.forEach((stem) => {
-        nextLoadStatus[stem.id] = 'pending'
+        nextLoadStatus[Number(stem.id)] = 'pending'
       })
       setStemLoadStatusById(nextLoadStatus)
     } else {
@@ -1626,7 +1701,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       let pendingCount = 0
 
       currentSongStems.forEach((stem) => {
-        const audio = stemAudioRefs.current[stem.id]
+        const audio = stemAudioRefs.current[Number(stem.id)]
         if (!audio || !audio.paused) return
 
         if (isStemEnded(audio)) {
@@ -1707,9 +1782,9 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
 
   useEffect(() => {
     currentSongStems.forEach((stem) => {
-      const gainNode = stemGainRefs.current[stem.id]
+      const gainNode = stemGainRefs.current[Number(stem.id)]
       if (!gainNode) return
-      const config = stemMixerConfig[stem.id] ?? { volume: 1, solo: false, muted: false }
+      const config = stemMixerConfig[Number(stem.id)] ?? { volume: 1, solo: false, muted: false }
       const effectiveMuted = config.muted || (hasSoloEnabled && !config.solo)
       gainNode.gain.value = effectiveMuted ? 0 : Math.max(0, Math.min(1, config.volume))
     })
@@ -1726,7 +1801,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
         if (cancelled) return
         try {
           const { audio } = await ensureStemAudioChain(stem, false)
-          updateStemBufferState(stem.id, audio)
+          updateStemBufferState(Number(stem.id), audio)
           if (audio.readyState === 0) {
             audio.load()
           }
@@ -1739,9 +1814,9 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
 
       intervalId = window.setInterval(() => {
         currentSongStems.forEach((stem) => {
-          const audio = stemAudioRefs.current[stem.id]
+          const audio = stemAudioRefs.current[Number(stem.id)]
           if (!audio) return
-          updateStemBufferState(stem.id, audio)
+          updateStemBufferState(Number(stem.id), audio)
         })
       }, 350)
     }
@@ -1777,30 +1852,42 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       const boundedByDuration = mixerDuration > 0 ? Math.min(startPosition, mixerDuration) : startPosition
       const targetPosition = Math.max(0, boundedByDuration)
 
+      // Esperar a que todas las pistas tengan buffer suficiente antes de reproducir
+      const waitForAllBuffers = async () => {
+        const maxWaitMs = 7000
+        const pollInterval = 70
+        let waited = 0
+        while (waited < maxWaitMs) {
+          const allBuffered = getActiveStems().every((stem) => {
+            const audio = stemAudioRefs.current[Number(stem.id)]
+            if (!audio) return false
+            const duration = Number.isFinite(audio.duration) ? audio.duration : 0
+            const requiredSeconds = duration > 0 ? Math.min(autoBufferTargetSeconds, duration) : autoBufferTargetSeconds
+            return getBufferedAheadSeconds(audio) >= requiredSeconds
+          })
+          if (allBuffered) return true
+          await new Promise((res) => setTimeout(res, pollInterval))
+          waited += pollInterval
+        }
+        return false
+      }
+
+      // Esperar buffers antes de reproducir
+      setActionStatus('Esperando buffer de todas las pistas...')
+      const allReady = await waitForAllBuffers()
+      if (!allReady) {
+        setActionStatus('No se pudo cargar buffer suficiente en todas las pistas. Intenta de nuevo.')
+        return
+      }
+
       const audiosToPlay: HTMLAudioElement[] = []
       for (const stem of currentSongStems) {
         const { audio, gainNode } = await ensureStemAudioChain(stem, true)
-        const config = stemMixerConfig[stem.id] ?? { volume: 1, solo: false, muted: false }
+        const config = stemMixerConfig[Number(stem.id)] ?? { volume: 1, solo: false, muted: false }
         const effectiveMuted = config.muted || (hasSoloEnabled && !config.solo)
         gainNode.gain.value = effectiveMuted ? 0 : Math.max(0, Math.min(1, config.volume))
         audio.currentTime = targetPosition
-
-        const duration = Number.isFinite(audio.duration) ? audio.duration : 0
-        const requiredSeconds = duration > 0 ? Math.min(autoBufferTargetSeconds, duration) : autoBufferTargetSeconds
-        const bufferedAhead = getBufferedAheadSeconds(audio)
-        const startupThreshold = Math.min(requiredSeconds, 0.45)
-        if (bufferedAhead >= startupThreshold || options?.bypassInitialBufferGate) {
-          audiosToPlay.push(audio)
-        }
-      }
-
-      if (audiosToPlay.length === 0) {
-        if (targetPosition > STEM_END_TOLERANCE_SECONDS && !options?.bypassInitialBufferGate) {
-          triggerRebuffer(targetPosition)
-          return
-        }
-        setActionStatus('No hay pistas listas para reproducir en este navegador')
-        return
+        audiosToPlay.push(audio)
       }
 
       const firstBatch = audiosToPlay.slice(0, playbackTuning.initialPlayParallel)
@@ -1822,9 +1909,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       setMixerPlaying(true)
       setMixerRebuffering(false)
       playStartedAtRef.current = Date.now()
-      if (!allCurrentStemsReady && !options?.bypassInitialBufferGate) {
-        setActionStatus(`Inicio parcial: ${audiosToPlay.length}/${currentSongStems.length} pistas en reproducción`) 
-      }
+      setActionStatus(null)
       if (options?.bypassInitialBufferGate) {
         setActionStatus('Reproducción reanudada tras rebuffer')
       }
@@ -1884,9 +1969,9 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     })
 
     currentSongStems.forEach((stem) => {
-      const audio = stemAudioRefs.current[stem.id]
+      const audio = stemAudioRefs.current[Number(stem.id)]
       if (!audio) return
-      updateStemBufferState(stem.id, audio)
+      updateStemBufferState(Number(stem.id), audio)
     })
 
     setMixerPosition(targetPosition)
@@ -2127,7 +2212,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       } catch {
         // No-op: polling effect keeps trying while upload is active.
       }
-      multitrackStems.refresh()
+      // multitrackStems.refresh() eliminado: react-query actualiza automáticamente o usa refetch si es necesario
       setStructureMarkersBySongId((previous) => {
         const next = { ...previous }
         delete next[songId]
@@ -2288,7 +2373,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
 
       songs.refresh()
       repertoireSongs.refresh()
-      multitrackStems.refresh()
+      // multitrackStems.refresh() eliminado: react-query actualiza automáticamente o usa refetch si es necesario
       const removed = response.removed_from_repertoires ?? 0
       if (removed > 0) {
         setActionStatus(`Canción eliminada y removida de ${removed} setlist(s)`) 
@@ -2349,7 +2434,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
         setMixerDuration(0)
       }
 
-      multitrackStems.refresh()
+      // multitrackStems.refresh() eliminado: react-query actualiza automáticamente o usa refetch si es necesario
       setAnalysisStatusBySongId((previous) => {
         const next = { ...previous }
         delete next[songId]
@@ -2890,21 +2975,20 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
               </div>
             ) : null}
 
-            {multitrackStems.loading ? (
-              <small className="muted">Cargando stems...</small>
-            ) : multitrackStems.error ? (
-              <small className="muted">Error stems: {multitrackStems.error}</small>
-            ) : currentSongStems.length === 0 ? (
+            {currentSongStems.length === 0 ? (
               <small className="muted">No hay multipistas para esta canción. Carga un ZIP en la biblioteca.</small>
             ) : (
               <div className="music-stems-mixer__list">
                 {currentSongStems.map((stem) => {
-                  const config = stemMixerConfig[stem.id] ?? { volume: 1, solo: false, muted: false }
+                  const config = stemMixerConfig[Number(stem.id)] ?? { volume: 1, solo: false, muted: false }
                   return (
                     <div key={`mixer-stem-${stem.id}`} className="music-stem-row">
                       <div className="music-stem-row__meta">
                         <strong>{stem.stem_name}</strong>
-                        <small>{stem.format.toUpperCase()}</small>
+                        <small>{stem.format ? stem.format.toUpperCase() : ''}</small>
+                      </div>
+                      <div className="music-stem-row__waveform">
+                        {/* Aquí puedes agregar una visualización simple o dejarlo vacío */}
                       </div>
                       <div className="music-stem-row__vu-fader">
                         <div className="music-stem-row__vu-lane">

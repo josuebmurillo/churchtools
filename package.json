@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.21",
+    "wavesurfer.js": "^7.12.1",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@types/wavesurfer.js": "^6.0.12"
+  }
+}

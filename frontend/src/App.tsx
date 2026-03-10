@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import './App.css'
 import AdminApp from './pages/AdminApp'
 import LoginPage from './pages/LoginPage'
 import MusicApp from './pages/MusicApp'
+import { withQueryClientProvider } from './utils/withQueryClientProvider'
 import VolunteersApp from './pages/VolunteersApp'
 
 type AppVariant = 'admin' | 'music' | 'volunteers'
@@ -37,8 +38,9 @@ const App = () => {
     return <LoginPage onLogin={handleLogin} initialVariant={activeApp} />
   }
 
+  const MusicAppWithProvider = useMemo(() => withQueryClientProvider(MusicApp), [])
   return activeApp === 'music' ? (
-    <MusicApp onLogout={handleLogout} />
+    <MusicAppWithProvider onLogout={handleLogout} />
   ) : activeApp === 'volunteers' ? (
     <VolunteersApp onLogout={handleLogout} />
   ) : (
