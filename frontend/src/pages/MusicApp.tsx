@@ -79,6 +79,8 @@ type PlaybackTuning = {
   lateJoinForceAfterMs: number
 }
 
+const EMPTY_WAVEFORM_BARS = Array.from({ length: WAVEFORM_BINS }, () => 0.1)
+
 const MusicApp = ({ onLogout }: MusicAppProps) => {
   // Estados y setters para mixer y stems
   const [stemMixerConfig, setStemMixerConfig] = useState<Record<number, StemMixerConfig>>({});
@@ -957,10 +959,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     )
     : 0
   const canStartMixer = currentSongStems.length > 0 && bufferedReadyCount >= minimumReadyToStart
-  const emptyWaveformBars = useMemo(
-    () => Array.from({ length: WAVEFORM_BINS }, () => 0.1),
-    []
-  )
+  const emptyWaveformBars = EMPTY_WAVEFORM_BARS
 
   const formatMixerTime = (value: number) => {
     if (!Number.isFinite(value) || value < 0) return '00:00'
@@ -1415,7 +1414,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       gainNode = context.createGain()
       analyserNode = context.createAnalyser()
       analyserNode.fftSize = 256
-      analyserNode.smoothingTimeConstant = 0.12
+      analyserNode.smoothingTimeConstant = 0.65 // Valor aumentado para mayor suavidad
 
       mediaNode.connect(gainNode)
       gainNode.connect(analyserNode)
@@ -1572,12 +1571,18 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     }
   }
 
+  // Ref para guardar el valor visual previo de cada vumetro
+  const stemMeterVisualRef = useRef<Record<number, number>>({})
+
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+
   const updateMeters = () => {
     currentSongStems.forEach((stem) => {
       const analyser = stemAnalyserRefs.current[Number(stem.id)]
+      const fill = stemMeterFillRefs.current[Number(stem.id)]
       if (!analyser) {
-        const fill = stemMeterFillRefs.current[Number(stem.id)]
         if (fill) fill.style.height = '4%'
+        stemMeterVisualRef.current[Number(stem.id)] = 0.04
         return
       }
 
@@ -1603,9 +1608,20 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       const normalizedDb = (db - dbFloor) / -dbFloor
       const combined = Math.max(normalizedDb, peakAbs)
       const meterLevel = Math.max(0, Math.min(1, Math.pow(combined, 0.82)))
-      const fill = stemMeterFillRefs.current[Number(stem.id)]
+
+      // Interpolación visual (lerp)
+      const prev = stemMeterVisualRef.current[Number(stem.id)] ?? 0.04
+      // t controla la suavidad: 0.18 = muy suave, 0.3 = más responsivo
+      const t = 0.18
+      let next = lerp(prev, meterLevel, t)
+      // Limitar velocidad de descenso (decay)
+      const maxDecayPerFrame = 0.025 // Máximo que puede bajar por frame (~2.5% barra)
+      if (next < prev) {
+        next = Math.max(next, prev - maxDecayPerFrame)
+      }
+      stemMeterVisualRef.current[Number(stem.id)] = next
       if (fill) {
-        fill.style.height = `${Math.max(4, meterLevel * 100)}%`
+        fill.style.height = `${Math.max(4, next * 100)}%`
       }
     })
     meterAnimationFrameRef.current = window.requestAnimationFrame(updateMeters)

@@ -1,4 +1,5 @@
-const MusicHeader = () => (
+import React from 'react'
+const MusicHeader = React.memo(() => (
   <header className="page-header">
     <div>
       <p className="kicker">Músicos</p>
@@ -8,6 +9,6 @@ const MusicHeader = () => (
       </p>
     </div>
   </header>
-)
+))
 
 export default MusicHeader

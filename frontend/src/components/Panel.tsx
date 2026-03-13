@@ -11,7 +11,8 @@ type PanelProps = {
   className?: string
 }
 
-const Panel = ({ title, subtitle, actions, children, className = '' }: PanelProps) => (
+import React from 'react'
+const Panel = React.memo(({ title, subtitle, actions, children, className = '' }: PanelProps) => (
   <section className={`module-panel ${className}`}>
     <div className="module-summary">
       <div>
@@ -22,6 +23,6 @@ const Panel = ({ title, subtitle, actions, children, className = '' }: PanelProp
     </div>
     {children}
   </section>
-)
+))
 
 export default Panel

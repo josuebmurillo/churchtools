@@ -576,7 +576,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
     [participationHistory.data]
   )
 
-  const chartOptions = useMemo(() => defaultChartOptions, [])
+  const chartOptions = defaultChartOptions
 
   const handleCreateMinistry = async (event: FormEvent) => {
     event.preventDefault()

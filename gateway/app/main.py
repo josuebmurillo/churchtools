@@ -1,9 +1,21 @@
+
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import os
 
+
 app = FastAPI(title="Church API Gateway", version="0.1.0")
+
+# Permitir CORS para todos los orígenes (ajusta allow_origins si lo deseas más restrictivo)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 SERVICES = {
     "people": os.getenv("PEOPLE_SERVICE_URL", "http://people:8000"),

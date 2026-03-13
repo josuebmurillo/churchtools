@@ -8,7 +8,8 @@ type MusicSidebarProps = {
   onLogout: () => void
 }
 
-const MusicSidebar = ({ activeSection, setActiveSection, onLogout }: MusicSidebarProps) => {
+import React from 'react'
+const MusicSidebar = React.memo(({ activeSection, setActiveSection, onLogout }: MusicSidebarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const handleSectionChange = (section: MusicSection) => {
@@ -66,7 +67,7 @@ const MusicSidebar = ({ activeSection, setActiveSection, onLogout }: MusicSideba
       </div>
     </aside>
   )
-}
+})
 
 export type { MusicSection }
 export default MusicSidebar

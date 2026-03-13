@@ -19,7 +19,14 @@ export const useApiData = <T,>(url: string, initial: T): DataState<T> => {
     fetchJson<T>(url)
       .then((payload) => {
         if (!mounted) return
-        setData(payload)
+        // Si el payload no es un array, usa el valor inicial (por defecto [])
+        if (Array.isArray(payload)) {
+          setData(payload as T)
+        } else if (payload === undefined || payload === null) {
+          setData(initial)
+        } else {
+          setData(payload)
+        }
         setError(null)
       })
       .catch((err) => {

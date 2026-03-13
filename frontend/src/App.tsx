@@ -1,14 +1,22 @@
-import { useState, useMemo } from 'react'
+import React, { useState, Suspense } from 'react'
+import ErrorBoundary from './components/ErrorBoundary'
 import './App.css'
 import AdminApp from './pages/AdminApp'
 import LoginPage from './pages/LoginPage'
-import MusicApp from './pages/MusicApp'
 import { withQueryClientProvider } from './utils/withQueryClientProvider'
 import VolunteersApp from './pages/VolunteersApp'
+const LazyMusicApp = React.lazy(() => import('./pages/MusicApp'))
 
 type AppVariant = 'admin' | 'music' | 'volunteers'
 
 const APP_VARIANT = (import.meta.env.VITE_APP_VARIANT || 'admin') as AppVariant
+
+const MusicAppWithProvider = withQueryClientProvider((props: any) => (
+  <Suspense fallback={<div className="loading">Cargando módulo de música…</div>}>
+    {/* eslint-disable-next-line react/jsx-props-no-spreading */}
+    <LazyMusicApp {...props} />
+  </Suspense>
+))
 
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -38,13 +46,16 @@ const App = () => {
     return <LoginPage onLogin={handleLogin} initialVariant={activeApp} />
   }
 
-  const MusicAppWithProvider = useMemo(() => withQueryClientProvider(MusicApp), [])
-  return activeApp === 'music' ? (
-    <MusicAppWithProvider onLogout={handleLogout} />
-  ) : activeApp === 'volunteers' ? (
-    <VolunteersApp onLogout={handleLogout} />
-  ) : (
-    <AdminApp onLogout={handleLogout} />
+  return (
+    <ErrorBoundary>
+      {activeApp === 'music' ? (
+        <MusicAppWithProvider onLogout={handleLogout} />
+      ) : activeApp === 'volunteers' ? (
+        <VolunteersApp onLogout={handleLogout} />
+      ) : (
+        <AdminApp onLogout={handleLogout} />
+      )}
+    </ErrorBoundary>
   )
 }
 
