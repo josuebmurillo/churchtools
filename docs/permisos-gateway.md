@@ -16,6 +16,35 @@ Respuestas esperadas:
 - `403 Forbidden`: token válido, pero sin permiso para esa ruta.
 - `2xx`: acceso autorizado y petición reenviada.
 
+## Diagrama (Mermaid)
+
+```mermaid
+flowchart TD
+		A[Request llega al Gateway] --> B{Ruta requiere permiso?}
+		B -- No --> Z[Forward directo al microservicio]
+		B -- Si --> C{Header Authorization presente?}
+		C -- No --> E[401 Unauthorized]
+		C -- Si --> D[GET /security/auth/me]
+		D --> F{Token valido?}
+		F -- No --> E
+		F -- Si --> G{Usuario tiene permiso requerido?}
+		G -- No --> H[403 Forbidden]
+		G -- Si --> Z
+
+		subgraph Mapeo Permisos
+			P1[admin:ministerios] --> R1[/ministries/*]
+			P2[admin:calendario] --> R2[/calendar/*]
+			P3[admin:consejerias] --> R3[/consejeria/*]
+			P4[admin:metricas] --> R4[/reports/*]
+			P5[admin:proveedores] --> R5[/vendors/*]
+			P6[volunteers:eventos] --> R6[/events/* y /volunteers/volunteer-roles*]
+			P7[volunteers:turnos] --> R7[/volunteers/shifts*]
+			P8[volunteers:asignaciones] --> R8[/volunteers/shift-assignments*]
+			P9[music:canciones] --> R9[/music/songs*]
+			P10[music:setlist] --> R10[/music/repertoires* y /music/repertoire-songs*]
+		end
+```
+
 ## Matriz permiso -> rutas protegidas
 
 | Permiso requerido | Rutas protegidas |
