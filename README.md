@@ -180,27 +180,12 @@ El gateway enruta por prefijo:
 - `/reports` -> Reports
 - `/pdfs` -> PDFs
 - `/consejeria` -> Consejeria
+- `/vendors` -> Vendors
 
-### Matriz permiso -> endpoint (enforced en gateway)
-El gateway valida permisos de módulo por request usando `Authorization: Bearer <token>` y consultando `/security/auth/me`.
+### Permisos de gateway
+El gateway aplica control de acceso por permisos de módulo.
 
-| Permiso requerido | Rutas protegidas |
-|---|---|
-| `admin:ministerios` | `/ministries/*` |
-| `admin:calendario` | `/calendar/*` |
-| `admin:consejerias` | `/consejeria/*` |
-| `admin:metricas` | `/reports/*` |
-| `admin:proveedores` | `/vendors/*` |
-| `volunteers:eventos` | `/events/*`, `/volunteers/volunteer-roles*` |
-| `volunteers:turnos` | `/volunteers/shifts*` |
-| `volunteers:asignaciones` | `/volunteers/shift-assignments*` |
-| `music:canciones` | `/music/songs*` |
-| `music:setlist` | `/music/repertoires*`, `/music/repertoire-songs*` |
-
-Reglas de respuesta:
-- `401 Unauthorized`: sin token o token inválido.
-- `403 Forbidden`: token válido, pero sin permiso para la ruta.
-- `200+`: acceso autorizado, request reenviada al microservicio destino.
+Consulta la matriz completa en `docs/permisos-gateway.md`.
 
 > Nota: En desarrollo, las tablas todavía pueden crearse al iniciar el servicio, pero se recomienda usar Alembic para mantener el esquema versionado.
 
