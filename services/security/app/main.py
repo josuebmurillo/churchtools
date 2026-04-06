@@ -122,6 +122,14 @@ class UserCreate(BaseModel):
     active: bool = True
 
 
+class UserUpdate(BaseModel):
+    person_id: Optional[int] = None
+    username: str
+    email: str
+    password: Optional[str] = None
+    active: bool = True
+
+
 class User(UserCreate):
     id: int
     model_config = ConfigDict(from_attributes=True)
@@ -202,7 +210,7 @@ def get_user(user_id: int, current_user: UserModel = Depends(get_current_user)):
 
 
 @app.put("/users/{user_id}", response_model=UserPublic)
-def update_user(user_id: int, payload: UserCreate, current_user: UserModel = Depends(get_current_user)):
+def update_user(user_id: int, payload: UserUpdate, current_user: UserModel = Depends(get_current_user)):
     with SessionLocal() as db:
         user = db.get(UserModel, user_id)
         if not user:
@@ -221,11 +229,12 @@ def update_user(user_id: int, payload: UserCreate, current_user: UserModel = Dep
         )
         if existing_email and existing_email.id != user_id:
             raise HTTPException(status_code=400, detail="Email already exists")
-        validate_password(payload.password)
+        if payload.password:
+            validate_password(payload.password)
+            user.password_hash = hash_password(payload.password)
         user.person_id = payload.person_id
         user.username = payload.username
         user.email = payload.email
-        user.password_hash = hash_password(payload.password)
         user.active = payload.active
         db.commit()
         db.refresh(user)

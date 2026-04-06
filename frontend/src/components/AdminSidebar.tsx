@@ -10,6 +10,7 @@ type Section =
   | 'calendario'
   | 'metricas'
   | 'mapa'
+  | 'proveedores'
 
 type AdminSidebarProps = {
   activeSection: Section
@@ -63,6 +64,7 @@ const AdminSidebar = ({ activeSection, setActiveSection, onLogout }: AdminSideba
             { key: 'calendario', label: 'Calendario' },
             { key: 'metricas', label: 'Métricas' },
             { key: 'mapa', label: 'Mapa' },
+            { key: 'proveedores', label: 'Proveedores' },
           ].map((item) => (
             <button
               key={item.key}

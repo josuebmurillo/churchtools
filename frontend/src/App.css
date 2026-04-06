@@ -117,6 +117,8 @@ nav button:hover {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .header {
@@ -278,22 +280,28 @@ nav button:hover {
   border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
+  transition: filter 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
 }
 
 .primary:hover {
   background: var(--primary-dark);
 }
 
+.primary:active:not(:disabled) {
+  transform: scale(0.97);
+  filter: brightness(0.96);
+}
+
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 16px;
   align-items: start;
 }
 
 .section-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 20px;
   align-items: start;
 }
@@ -504,6 +512,7 @@ nav button:hover {
   padding: 10px 12px;
   width: 100%;
   max-width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .input-inline {
@@ -525,6 +534,8 @@ nav button:hover {
   border-radius: 10px;
   cursor: pointer;
   font-size: 0.85rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
 }
 
 .action-button.ghost {
@@ -537,9 +548,18 @@ nav button:hover {
   color: var(--danger);
 }
 
+.action-button.danger:hover:not(:disabled) {
+  background: rgba(237, 73, 86, 0.2);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+}
+
 .action-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.action-button:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
 .notice {
@@ -3342,4 +3362,410 @@ textarea.input:focus {
   .music-stem-row {
     min-height: 320px;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   UI/UX IMPROVEMENTS — Animaciones, responsividad, micro-gestos
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Animación de entrada de paneles ──────────────────────────── */
+@keyframes panelFadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes panelSlideIn {
+  from { opacity: 0; transform: translateX(10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.module-panel {
+  animation: panelFadeIn 0.22s ease both;
+}
+
+/* Cada cambio de sección anima el contenido */
+.app > .main > * {
+  animation: panelFadeIn 0.2s ease both;
+}
+
+/* ── Nav active: indicador lateral colorido ───────────────────── */
+.section-tabs button {
+  transition: background-color 0.15s ease, color 0.15s ease,
+              transform 0.1s ease, padding-left 0.15s ease;
+  position: relative;
+  padding-left: 12px;
+}
+
+.section-tabs button::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  translate: 0 -50%;
+  width: 3px;
+  height: 0;
+  border-radius: 999px;
+  background: var(--primary);
+  transition: height 0.18s ease;
+}
+
+.section-tabs button.active {
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface-muted));
+  color: var(--primary);
+  font-weight: 600;
+  padding-left: 20px;
+}
+
+.section-tabs button.active::before {
+  height: 55%;
+}
+
+.section-tabs button:not(.active):hover {
+  padding-left: 16px;
+}
+
+.section-tabs button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+nav button {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* ── Sidebar scroll en desktop ────────────────────────────────── */
+@media (min-width: 961px) {
+  .sidebar {
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    max-height: 100dvh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .sidebar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .sidebar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+  }
+}
+
+/* ── Sidebar abierto en móvil: scrolleable ────────────────────── */
+@media (max-width: 960px) {
+  .sidebar.is-open .sidebar-collapsible {
+    overflow-y: auto;
+    max-height: min(72vh, 72dvh);
+    scrollbar-width: thin;
+  }
+}
+
+/* ── Table row hover ──────────────────────────────────────────── */
+.table-row {
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+              transform 0.12s ease, box-shadow 0.14s ease;
+}
+
+.table-row:not(.loading):hover {
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+  transform: translateX(2px);
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+/* Hint de scroll horizontal en tablas en móvil */
+@media (max-width: 840px) {
+  .module-table {
+    position: relative;
+  }
+
+  .module-table::after {
+    content: '';
+    position: absolute;
+    top: 40px; /* después del header */
+    right: 0;
+    bottom: 0;
+    width: 32px;
+    pointer-events: none;
+    z-index: 3;
+    background: linear-gradient(
+      to right,
+      transparent,
+      color-mix(in srgb, var(--surface) 80%, transparent)
+    );
+    border-radius: 0 12px 12px 0;
+  }
+}
+
+/* ── Card hover states ────────────────────────────────────────── */
+.ministry-card {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.ministry-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--text) 9%, transparent);
+  transform: translateY(-2px);
+}
+
+.team-card {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.team-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--text) 6%, transparent);
+  transform: translateY(-1px);
+}
+
+.mini-card,
+.demo-card {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.mini-card:hover,
+.demo-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+/* ── Modal: mejor manejo en pantallas cortas ──────────────────── */
+.modal-backdrop {
+  overflow-y: auto;
+  align-items: flex-start;
+  padding-block: max(24px, env(safe-area-inset-top, 24px));
+}
+
+.modal {
+  max-height: min(82vh, 82dvh);
+  margin: auto;
+}
+
+@media (max-height: 600px) {
+  .modal {
+    max-height: 96dvh;
+    border-radius: 14px;
+  }
+}
+
+/* ── Chips y badges: transición ───────────────────────────────── */
+.module-chip {
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* ── Inputs: color explícito (glassmorphism override) ─────────── */
+.input,
+.input-inline,
+select.input,
+textarea.input {
+  color: var(--text);
+}
+
+/* ── Focus visible global ─────────────────────────────────────── */
+.action-button:focus-visible,
+.primary:focus-visible,
+.section-tabs button:focus-visible,
+nav button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ── Tap highlight en touch ───────────────────────────────────── */
+@media (hover: none) {
+  .action-button:active:not(:disabled) {
+    background: color-mix(in srgb, var(--primary) 16%, var(--surface-muted));
+    transform: scale(0.95);
+  }
+
+  .primary:active:not(:disabled) {
+    filter: brightness(0.93);
+    transform: scale(0.97);
+  }
+
+  .table-row:active {
+    background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  }
+
+  .ministry-card:active,
+  .team-card:active {
+    transform: scale(0.985);
+  }
+
+  .music-rehearsal-card:active {
+    transform: scale(0.97);
+  }
+
+  .music-library-card:active {
+    transform: scale(0.985);
+  }
+}
+
+/* ── Panel children no desborden ──────────────────────────────── */
+.module-panel > * {
+  min-width: 0;
+}
+
+/* ── Row-actions overflow ─────────────────────────────────────── */
+.row-actions {
+  min-width: 0;
+}
+
+/* ── Music: drag handle hover ─────────────────────────────────── */
+.music-setlist-drag-handle:hover,
+.timeline-drag-handle:hover {
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--primary) 46%, var(--border));
+  color: var(--primary);
+}
+
+/* ── Music rehearsal card: cursor y feedback ──────────────────── */
+.music-rehearsal-card {
+  cursor: pointer;
+}
+
+/* ── Music section-tabs: icono de sección activa ──────────────── */
+.music-setlist-item {
+  cursor: default;
+  user-select: none;
+}
+
+/* ── Dashboard summary boxes no se corten ────────────────────── */
+.module-summary {
+  min-width: 0;
+}
+
+.module-summary > div:first-child {
+  min-width: 0;
+}
+
+.module-summary h3 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ── Page header no se corte en móvil ─────────────────────────── */
+.page-header h1 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ── Header h2 overflow ───────────────────────────────────────── */
+.header h2 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+}
+
+/* ── Botón primario en glassmorphism: transición faltante ─────── */
+.primary:hover:not(:disabled) {
+  filter: brightness(1.03);
+  transform: translateY(-1px);
+}
+
+/* ── Notice error: borde más visible ─────────────────────────── */
+.notice--error {
+  border-width: 1px;
+  font-weight: 500;
+}
+
+/* ── Scrollbar global delgado (pantallas anchas) ──────────────── */
+@media (min-width: 640px) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--muted) 70%, var(--border));
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+}
+
+/* ── Org card ya tiene transition, refuerzo ───────────────────── */
+.org-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+/* ── Inputs textarea resize mejora ───────────────────────────── */
+textarea.input {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* ── Responsive: main padding en tablets ─────────────────────── */
+@media (max-width: 1100px) and (min-width: 961px) {
+  .main {
+    padding: 24px 28px;
+  }
+}
+
+/* ── Calendar grid scroll en móvil con indicador ─────────────── */
+.calendar-main {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Música: media grid responsive para tablet ────────────────── */
+@media (max-width: 1100px) and (min-width: 981px) {
+  .music-media-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .music-pdf-viewer,
+  .music-youtube-player {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── Sección login: safe area en mobile ───────────────────────── */
+.login-page {
+  padding:
+    max(32px, env(safe-area-inset-top, 32px))
+    max(20px, env(safe-area-inset-right, 20px))
+    max(32px, env(safe-area-inset-bottom, 32px))
+    max(20px, env(safe-area-inset-left, 20px));
+}
+
+/* ── Sidebar safe area en notched phones ──────────────────────── */
+@media (max-width: 960px) {
+  .sidebar {
+    padding-top: max(12px, env(safe-area-inset-top, 12px));
+  }
+}
+
+/* ── Skeleton/loading pulse ───────────────────────────────────── */
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 1; }
+}
+
+.table-row.loading {
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+}
+
+/* ── Eliminar tap highlight en WebKit ─────────────────────────── */
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
 }

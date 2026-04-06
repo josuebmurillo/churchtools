@@ -22,11 +22,20 @@ function GenericTable<T extends object>({
   className = '',
 }: GenericTableProps<T>) {
   return (
-    <div className={`module-table ${className}`}>
+    <div className={`module-table ${className}`} style={{ position: 'relative' }}>
       <div className="module-table__inner">
-        <div className="table-header">
+        <div className="table-header" style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 2,
+          background: 'var(--bg)',
+          paddingBlock: '6px 4px',
+          marginBottom: 4,
+        }}>
           {columns.map((col) => (
-            <span key={`header-${String(col.key)}`}>{col.label ?? String(col.key)}</span>
+            <span key={`header-${String(col.key)}`} style={{ fontWeight: 600 }}>
+              {col.label ?? String(col.key)}
+            </span>
           ))}
         </div>
         {loading ? (
@@ -37,8 +46,8 @@ function GenericTable<T extends object>({
           rows.map((row, index) => (
             <div className="table-row" key={`row-${index}`}>
               {columns.map((col) => (
-                <span key={`${String(col.key)}-${index}`}>{
-                  col.render
+                <span key={`${String(col.key)}-${index}`} style={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                  {col.render
                     ? col.render(row[col.key], row)
                     : (typeof row[col.key] === 'string' ||
                        typeof row[col.key] === 'number' ||
@@ -46,8 +55,8 @@ function GenericTable<T extends object>({
                        row[col.key] === null ||
                        row[col.key] === undefined)
                       ? (row[col.key] ?? '—').toString()
-                      : '—'
-                }</span>
+                      : '—'}
+                </span>
               ))}
             </div>
           ))

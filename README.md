@@ -111,11 +111,55 @@ Dentro de cada servicio:
 Comando único (desde la raíz) para generar y aplicar en todos los servicios:
 `for svc in people ministries events music comms groups volunteers calendar security reports pdfs consejeria; do dir="./services/$svc"; docker compose run --rm -v "$dir:/app" -w /app $svc alembic revision --autogenerate -m "init"; docker compose run --rm -v "$dir:/app" -w /app $svc alembic upgrade head; done`
 
-## Pruebas
-1. Crea el entorno virtual: `python3 -m venv .venv`
-2. Activa el entorno: `source .venv/bin/activate`
-3. Instala dependencias de pruebas: `pip install -r requirements-dev.txt`
-4. Ejecuta: `pytest -q`
+## Testing
+
+### Suite de Tests Automatizados
+Cobertura completa: **68 tests** verificando todos los 15 servicios + gateway + auth + validaciones de negocio.
+
+#### Instalación rápida
+```bash
+# Con pipx (recomendado - sin venv)
+pipx install pytest httpx
+
+# O dentro de un venv
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+```
+
+#### Ejecutar tests
+```bash
+# Todos los tests
+pytest tests/ -v
+
+# O usar el script rápido
+./run-tests.sh                # Todos
+./run-tests.sh TestVendors    # Solo vendors
+./run-tests.sh test_health    # Solo health checks
+```
+
+#### Cobertura
+| Módulo | Tests | Scope |
+|---|---|---|
+| Health Checks | 15 | Todos los servicios activos |
+| Security/Auth | 6 | Login, JWT, CRUD usuarios, duplicados |
+| People | 3 | CRUD personas, email único |
+| Vendors | 5 | CRUD completo, validación, gateway |
+| Ministries | 5 | CRUD ministerios, roles, miembros |
+| Events | 2 | Listado + creación |
+| Music | 3 | Canciones + repertorios |
+| Groups | 2 | Miembros únicos |
+| Volunteers | 3 | Turnos válidos, asignaciones únicas |
+| Calendar | 2 | Reservas sin solapamiento |
+| Comms | 1 | Validación audiencia |
+| Consejeria | 2 | Listado + creación |
+| Reports | 2 | Reportes de asistencia/participación |
+| Gateway | 9 | Rutas a servicios + 404 |
+| **Total** | **68** | **✅ 100% passing** |
+
+#### Archivos de tests
+- `tests/test_business_rules.py` - Reglas de negocio por dominio
+- `tests/test_all_services.py` - Suite completa de integración (health, CRUD, validaciones)
 
 ## Endpoints base
 Cada servicio expone:

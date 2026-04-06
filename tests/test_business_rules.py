@@ -21,8 +21,14 @@ def test_ministries_rules():
         {"name": "Team " + uuid4().hex, "ministry_id": ministry["id"]},
     ).json()
     role_name = "Leader " + uuid4().hex
-    role = post_json("/ministries/team-roles", {"name": role_name}).json()
-    dup_role = post_json("/ministries/team-roles", {"name": role_name})
+    role = post_json(
+        "/ministries/team-roles",
+        {"name": role_name, "ministry_id": ministry["id"]},
+    ).json()
+    dup_role = post_json(
+        "/ministries/team-roles",
+        {"name": role_name, "ministry_id": ministry["id"]},
+    )
     assert dup_role.status_code == 400
 
     member = post_json(

@@ -31,6 +31,7 @@ SERVICES = {
     "pdfs": os.getenv("PDFS_SERVICE_URL", "http://pdfs:8000"),
     "consejeria": os.getenv("CONSEJERIA_SERVICE_URL", "http://consejeria:8000"),
     "multitracks": os.getenv("MULTITRACKS_SERVICE_URL", "http://multitracks:8000"),
+    "vendors": os.getenv("VENDORS_SERVICE_URL", "http://vendors:8000"),
 }
 
 
@@ -150,3 +151,8 @@ async def proxy_consejeria(path: str, request: Request):
 @app.api_route("/multitracks{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def proxy_multitracks(path: str, request: Request):
     return await forward_request("multitracks", path, request)
+
+
+@app.api_route("/vendors{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def proxy_vendors(path: str, request: Request):
+    return await forward_request("vendors", path, request)

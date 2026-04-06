@@ -25,6 +25,7 @@ services:
       - reports
       - consejeria
       - multitracks
+      - vendors
       - app-db
 
   people:
@@ -166,6 +167,16 @@ services:
       - MULTITRACKS_ANALYSIS_PASS_2_SECONDS=540
     volumes:
       - multitracks_data:/data/multitracks
+    depends_on:
+      - app-db
+
+  vendors:
+    build: ./services/vendors
+    ports:
+      - "8014:8000"
+    environment:
+      - SERVICE_NAME=vendors
+      - VENDORS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@app-db:5432/church_db
     depends_on:
       - app-db
 
