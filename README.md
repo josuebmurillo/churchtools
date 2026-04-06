@@ -114,7 +114,7 @@ Comando único (desde la raíz) para generar y aplicar en todos los servicios:
 ## Testing
 
 ### Suite de Tests Automatizados
-Cobertura completa: **68 tests** verificando todos los 15 servicios + gateway + auth + validaciones de negocio.
+Cobertura completa: **81 tests** verificando todos los 15 servicios + gateway + auth + RBAC/permisos + validaciones de negocio.
 
 #### Instalación rápida
 ```bash
@@ -142,7 +142,7 @@ pytest tests/ -v
 | Módulo | Tests | Scope |
 |---|---|---|
 | Health Checks | 15 | Todos los servicios activos |
-| Security/Auth | 6 | Login, JWT, CRUD usuarios, duplicados |
+| Security/Auth | 12 | Login, JWT, CRUD usuarios, RBAC admin y permisos por módulo |
 | People | 3 | CRUD personas, email único |
 | Vendors | 5 | CRUD completo, validación, gateway |
 | Ministries | 5 | CRUD ministerios, roles, miembros |
@@ -154,8 +154,8 @@ pytest tests/ -v
 | Comms | 1 | Validación audiencia |
 | Consejeria | 2 | Listado + creación |
 | Reports | 2 | Reportes de asistencia/participación |
-| Gateway | 9 | Rutas a servicios + 404 |
-| **Total** | **68** | **✅ 100% passing** |
+| Gateway | 10 | Rutas a servicios, permisos por módulo + 404 |
+| **Total** | **81** | **✅ 100% passing** |
 
 #### Archivos de tests
 - `tests/test_business_rules.py` - Reglas de negocio por dominio
@@ -180,6 +180,27 @@ El gateway enruta por prefijo:
 - `/reports` -> Reports
 - `/pdfs` -> PDFs
 - `/consejeria` -> Consejeria
+
+### Matriz permiso -> endpoint (enforced en gateway)
+El gateway valida permisos de módulo por request usando `Authorization: Bearer <token>` y consultando `/security/auth/me`.
+
+| Permiso requerido | Rutas protegidas |
+|---|---|
+| `admin:ministerios` | `/ministries/*` |
+| `admin:calendario` | `/calendar/*` |
+| `admin:consejerias` | `/consejeria/*` |
+| `admin:metricas` | `/reports/*` |
+| `admin:proveedores` | `/vendors/*` |
+| `volunteers:eventos` | `/events/*`, `/volunteers/volunteer-roles*` |
+| `volunteers:turnos` | `/volunteers/shifts*` |
+| `volunteers:asignaciones` | `/volunteers/shift-assignments*` |
+| `music:canciones` | `/music/songs*` |
+| `music:setlist` | `/music/repertoires*`, `/music/repertoire-songs*` |
+
+Reglas de respuesta:
+- `401 Unauthorized`: sin token o token inválido.
+- `403 Forbidden`: token válido, pero sin permiso para la ruta.
+- `200+`: acceso autorizado, request reenviada al microservicio destino.
 
 > Nota: En desarrollo, las tablas todavía pueden crearse al iniciar el servicio, pero se recomienda usar Alembic para mantener el esquema versionado.
 
