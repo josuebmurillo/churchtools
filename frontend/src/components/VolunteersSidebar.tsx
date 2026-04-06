@@ -4,11 +4,12 @@ type VolunteersSection = 'eventos' | 'turnos' | 'asignaciones'
 
 type VolunteersSidebarProps = {
   activeSection: VolunteersSection
+  visibleSections?: VolunteersSection[]
   setActiveSection: (section: VolunteersSection) => void
   onLogout: () => void
 }
 
-const VolunteersSidebar = ({ activeSection, setActiveSection, onLogout }: VolunteersSidebarProps) => {
+const VolunteersSidebar = ({ activeSection, visibleSections, setActiveSection, onLogout }: VolunteersSidebarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const handleSectionChange = (section: VolunteersSection) => {
@@ -20,6 +21,12 @@ const VolunteersSidebar = ({ activeSection, setActiveSection, onLogout }: Volunt
     setIsMenuOpen(false)
     onLogout()
   }
+
+  const items = [
+    { key: 'eventos', label: 'Eventos' },
+    { key: 'turnos', label: 'Turnos' },
+    { key: 'asignaciones', label: 'Asignaciones' },
+  ].filter((item) => !visibleSections || visibleSections.includes(item.key as VolunteersSection))
 
   return (
     <aside className={`sidebar ${isMenuOpen ? 'is-open' : ''}`}>
@@ -44,11 +51,7 @@ const VolunteersSidebar = ({ activeSection, setActiveSection, onLogout }: Volunt
 
       <div className="sidebar-collapsible">
         <nav className="section-tabs">
-          {[
-            { key: 'eventos', label: 'Eventos' },
-            { key: 'turnos', label: 'Turnos' },
-            { key: 'asignaciones', label: 'Asignaciones' },
-          ].map((item) => (
+          {items.map((item) => (
             <button
               key={item.key}
               className={activeSection === item.key ? 'active' : ''}

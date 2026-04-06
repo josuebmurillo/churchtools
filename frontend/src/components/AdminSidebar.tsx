@@ -14,11 +14,12 @@ type Section =
 
 type AdminSidebarProps = {
   activeSection: Section
+  visibleSections?: Section[]
   setActiveSection: (section: Section) => void
   onLogout: () => void
 }
 
-const AdminSidebar = ({ activeSection, setActiveSection, onLogout }: AdminSidebarProps) => {
+const AdminSidebar = ({ activeSection, visibleSections, setActiveSection, onLogout }: AdminSidebarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const handleSectionChange = (section: Section) => {
@@ -30,6 +31,19 @@ const AdminSidebar = ({ activeSection, setActiveSection, onLogout }: AdminSideba
     setIsMenuOpen(false)
     onLogout()
   }
+
+  const items = [
+    { key: 'resumen', label: 'Resumen' },
+    { key: 'usuarios', label: 'Usuarios' },
+    { key: 'ministerios', label: 'Ministerios' },
+    { key: 'voluntarios', label: 'Voluntarios' },
+    { key: 'seguimiento', label: 'Seguimiento' },
+    { key: 'consejerias', label: 'Consejerías' },
+    { key: 'calendario', label: 'Calendario' },
+    { key: 'metricas', label: 'Métricas' },
+    { key: 'mapa', label: 'Mapa' },
+    { key: 'proveedores', label: 'Proveedores' },
+  ].filter((item) => !visibleSections || visibleSections.includes(item.key as Section))
 
   return (
     <aside className={`sidebar ${isMenuOpen ? 'is-open' : ''}`}>
@@ -54,18 +68,7 @@ const AdminSidebar = ({ activeSection, setActiveSection, onLogout }: AdminSideba
 
       <div className="sidebar-collapsible">
         <nav className="section-tabs">
-          {[
-            { key: 'resumen', label: 'Resumen' },
-            { key: 'usuarios', label: 'Usuarios' },
-            { key: 'ministerios', label: 'Ministerios' },
-            { key: 'voluntarios', label: 'Voluntarios' },
-            { key: 'seguimiento', label: 'Seguimiento' },
-            { key: 'consejerias', label: 'Consejerías' },
-            { key: 'calendario', label: 'Calendario' },
-            { key: 'metricas', label: 'Métricas' },
-            { key: 'mapa', label: 'Mapa' },
-            { key: 'proveedores', label: 'Proveedores' },
-          ].map((item) => (
+          {items.map((item) => (
             <button
               key={item.key}
               className={activeSection === item.key ? 'active' : ''}
@@ -84,4 +87,5 @@ const AdminSidebar = ({ activeSection, setActiveSection, onLogout }: AdminSideba
   )
 }
 
+export type { Section as AdminSection }
 export default AdminSidebar

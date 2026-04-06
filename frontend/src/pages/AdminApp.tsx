@@ -12,7 +12,7 @@ import {
   Legend,
 } from 'chart.js'
 import AdminHeader from '../components/AdminHeader'
-import AdminSidebar from '../components/AdminSidebar'
+import AdminSidebar, { type AdminSection } from '../components/AdminSidebar'
 import AdminUsersPanel from '../components/AdminUsersPanel'
 import VendorsPanel from '../components/VendorsPanel'
 import CalendarPanel from '../components/CalendarPanel'
@@ -21,10 +21,11 @@ import DashboardSummary from '../components/DashboardSummary'
 import MapPanel from '../components/MapPanel'
 import MinistriesPanel from '../components/MinistriesPanel'
 import MetricsPanel from '../components/MetricsPanel'
+import Panel from '../components/Panel'
 import TrackingPanel from '../components/TrackingPanel'
 import VolunteersPanel from '../components/VolunteersPanel'
 import { useApiData } from '../hooks/useApiData'
-import { buildUrl, fetchJson, postJson } from '../services/api'
+import { buildUrl, fetchJson, getAllowedSections, getAuthUser, postJson } from '../services/api'
 import { buildCalendarDays, buildCalendarItemsByDate } from '../utils/calendar'
 import {
   buildAgePyramid,
@@ -166,18 +167,14 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
     team_id: '',
     role_id: '',
   })
-  const [activeSection, setActiveSection] = useState<
-    | 'resumen'
-    | 'usuarios'
-    | 'ministerios'
-    | 'voluntarios'
-    | 'seguimiento'
-    | 'consejerias'
-    | 'calendario'
-    | 'metricas'
-    | 'mapa'
-    | 'proveedores'
-  >('resumen')
+  const currentUser = getAuthUser()
+  const allowedSections = getAllowedSections('admin', currentUser?.permissions ?? []) as AdminSection[]
+  const [activeSection, setActiveSection] = useState<AdminSection>(allowedSections[0] ?? 'resumen')
+  const handleSectionChange = (section: AdminSection) => {
+    if (allowedSections.includes(section)) {
+      setActiveSection(section)
+    }
+  }
 
   const ministriesById = useMemo(() => {
     const map = new Map<number, Ministry>()
@@ -1041,12 +1038,18 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
 
   return (
     <div className="app">
-      <AdminSidebar activeSection={activeSection} setActiveSection={setActiveSection} onLogout={onLogout} />
+      <AdminSidebar activeSection={activeSection} visibleSections={allowedSections} setActiveSection={handleSectionChange} onLogout={onLogout} />
 
       <main className="main">
           <AdminHeader />
 
-        {activeSection === 'resumen' && (
+        {allowedSections.length === 0 && (
+          <Panel title="Sin acceso" subtitle="Tu usuario no tiene módulos asignados en Administración.">
+            Solicita a un administrador que te asigne permisos para esta vista.
+          </Panel>
+        )}
+
+        {allowedSections.includes('resumen') && activeSection === 'resumen' && (
           <DashboardSummary
             ministriesCount={ministries.data.length}
             peopleCount={people.data.length}
@@ -1058,14 +1061,14 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
             facilitiesById={facilitiesById}
             ministriesById={ministriesById}
             eventsWithoutReservation={eventsWithoutReservation}
-            onNavigate={(section) => setActiveSection(section)}
+            onNavigate={(section) => handleSectionChange(section)}
           />
         )}
-        {activeSection === 'usuarios' && <AdminUsersPanel />}
+        {allowedSections.includes('usuarios') && activeSection === 'usuarios' && <AdminUsersPanel />}
 
         {actionStatus && <div className="notice">{actionStatus}</div>}
 
-        {activeSection === 'ministerios' && (
+        {allowedSections.includes('ministerios') && activeSection === 'ministerios' && (
           <MinistriesPanel
             ministries={ministries.data}
             ministriesLoading={ministries.loading}
@@ -1100,7 +1103,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
           />
         )}
 
-        {activeSection === 'voluntarios' && (
+        {allowedSections.includes('voluntarios') && activeSection === 'voluntarios' && (
           <VolunteersPanel
             teamMembersCount={teamMembers.data.length}
             volunteersByMinistrySize={volunteersByMinistry.size}
@@ -1135,7 +1138,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
           />
         )}
 
-        {activeSection === 'seguimiento' && (
+        {allowedSections.includes('seguimiento') && activeSection === 'seguimiento' && (
           <TrackingPanel
             demographicTotal={demographicSummary.total}
             serversCount={serversCount}
@@ -1152,7 +1155,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
           />
         )}
 
-        {activeSection === 'consejerias' && (
+        {allowedSections.includes('consejerias') && activeSection === 'consejerias' && (
           <ConsejeriaPanel
             consejerias={consejerias.data}
             consejeriasLoading={consejerias.loading}
@@ -1171,7 +1174,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
           />
         )}
 
-        {activeSection === 'calendario' && (
+        {allowedSections.includes('calendario') && activeSection === 'calendario' && (
           <CalendarPanel
             calendarMonthLabel={calendarMonthLabel}
             calendarDays={calendarDays}
@@ -1211,7 +1214,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
           />
         )}
 
-        {activeSection === 'metricas' && (
+        {allowedSections.includes('metricas') && activeSection === 'metricas' && (
           <MetricsPanel
             teamMembersCount={teamMembers.data.length}
             volunteersByMinistrySize={volunteersByMinistry.size}
@@ -1234,7 +1237,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
           />
         )}
 
-        {activeSection === 'mapa' && (
+        {allowedSections.includes('mapa') && activeSection === 'mapa' && (
           <MapPanel
             ministries={ministries.data}
             ministriesByParent={ministriesByParent}
@@ -1247,7 +1250,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
           />
         )}
 
-        {activeSection === 'proveedores' && <VendorsPanel />}
+        {allowedSections.includes('proveedores') && activeSection === 'proveedores' && <VendorsPanel />}
       </main>
     </div>
   )

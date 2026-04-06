@@ -1,7 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { buildUrl, setAuthToken, clearAuthToken } from '../services/api'
-
-type AppVariant = 'admin' | 'music' | 'volunteers'
+import { buildUrl, setAuthToken, clearAuthToken, clearAuthUser, fetchCurrentUser, getAllowedVariants, setAuthUser, type AppVariant } from '../services/api'
 
 type LoginPageProps = {
   onLogin: (variant: AppVariant) => void
@@ -56,7 +54,13 @@ const LoginPage = ({ onLogin, initialVariant }: LoginPageProps) => {
         }
         const data = await res.json()
         setAuthToken(data.access_token)
-        onLogin(variant)
+        const me = await fetchCurrentUser()
+        setAuthUser(me)
+        const allowedVariants = getAllowedVariants(me.roles)
+        if (allowedVariants.length === 0) {
+          throw new Error('Tu usuario no tiene acceso a ningun modulo. Solicita permisos a un administrador.')
+        }
+        onLogin(allowedVariants.includes(variant) ? variant : allowedVariants[0])
       } else {
         // Registro
         const res = await fetch(buildUrl('security', '/auth/register'), {
@@ -79,10 +83,17 @@ const LoginPage = ({ onLogin, initialVariant }: LoginPageProps) => {
         }
         const loginData = await loginRes.json()
         setAuthToken(loginData.access_token)
-        onLogin(variant)
+        const me = await fetchCurrentUser()
+        setAuthUser(me)
+        const allowedVariants = getAllowedVariants(me.roles)
+        if (allowedVariants.length === 0) {
+          throw new Error('Usuario creado, pero aun no tiene modulos asignados.')
+        }
+        onLogin(allowedVariants.includes(variant) ? variant : allowedVariants[0])
       }
     } catch (err: any) {
       clearAuthToken()
+      clearAuthUser()
       setError(err.message || 'Error de autenticación')
     }
   }

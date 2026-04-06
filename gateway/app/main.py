@@ -1,5 +1,5 @@
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
@@ -47,7 +47,86 @@ HOP_BY_HOP_HEADERS = {
 }
 
 
+PROTECTED_SERVICE_PERMISSIONS: dict[str, dict[str, str]] = {
+    "ministries": {
+        "*": "admin:ministerios",
+    },
+    "calendar": {
+        "*": "admin:calendario",
+    },
+    "consejeria": {
+        "*": "admin:consejerias",
+    },
+    "reports": {
+        "*": "admin:metricas",
+    },
+    "vendors": {
+        "*": "admin:proveedores",
+    },
+    "events": {
+        "*": "volunteers:eventos",
+    },
+    "volunteers": {
+        "/volunteer-roles": "volunteers:eventos",
+        "/shifts": "volunteers:turnos",
+        "/shift-assignments": "volunteers:asignaciones",
+    },
+    "music": {
+        "/songs": "music:canciones",
+        "/repertoires": "music:setlist",
+        "/repertoire-songs": "music:setlist",
+    },
+}
+
+
+def required_permission_for_request(service: str, path: str) -> str | None:
+    if path == "/health":
+        return None
+    service_rules = PROTECTED_SERVICE_PERMISSIONS.get(service)
+    if not service_rules:
+        return None
+    for prefix, permission in service_rules.items():
+        if prefix == "*":
+            return permission
+        if path == prefix or path.startswith(f"{prefix}/"):
+            return permission
+    return None
+
+
+async def get_permissions_from_security(authorization_header: str) -> set[str]:
+    security_url = SERVICES["security"]
+    async with httpx.AsyncClient(timeout=10) as client:
+        me_resp = await client.get(
+            f"{security_url}/auth/me",
+            headers={"Authorization": authorization_header},
+        )
+    if me_resp.status_code in {401, 403}:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if me_resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Failed to validate user permissions")
+    body = me_resp.json()
+    permissions = body.get("permissions", [])
+    return {
+        permission.get("name", "").strip().lower()
+        for permission in permissions
+        if isinstance(permission, dict)
+    }
+
+
+async def enforce_permission_if_needed(service: str, path: str, request: Request) -> None:
+    required_permission = required_permission_for_request(service, path)
+    if not required_permission:
+        return
+    authorization_header = request.headers.get("authorization")
+    if not authorization_header:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    user_permissions = await get_permissions_from_security(authorization_header)
+    if required_permission not in user_permissions:
+        raise HTTPException(status_code=403, detail=f"Permission required: {required_permission}")
+
+
 async def forward_request(service: str, path: str, request: Request) -> Response:
+    await enforce_permission_if_needed(service, path, request)
     base_url = SERVICES[service]
     url = f"{base_url}{path}"
     headers = {

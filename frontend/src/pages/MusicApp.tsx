@@ -9,7 +9,7 @@ import Panel from '../components/Panel'
 import MusicHeader from '../components/MusicHeader'
 import MusicSidebar, { type MusicSection } from '../components/MusicSidebar'
 import { useApiData } from '../hooks/useApiData'
-import { buildUrl, fetchJson, postJson } from '../services/api'
+import { buildUrl, fetchJson, getAllowedSections, getAuthUser, postJson } from '../services/api'
 import type { Event, EventSchedule, MultitrackAnalysisStatus, MultitrackGuideAudio, MultitrackSongStructure, MultitrackStructureEntry, MultitrackWaveform, Repertoire, RepertoireSong, Song } from '../types'
 import { buildCalendarDays } from '../utils/calendar'
 
@@ -213,7 +213,14 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   const [practiceMode, setPracticeMode] = useState<PracticeMode>('event')
   const [rehearsalNotesByRepertoire, setRehearsalNotesByRepertoire] = useState<Record<string, string>>({})
   const [actionStatus, setActionStatus] = useState<string | null>(null)
-  const [activeSection, setActiveSection] = useState<MusicSection>('general')
+  const currentUser = getAuthUser()
+  const allowedSections = getAllowedSections('music', currentUser?.permissions ?? []) as MusicSection[]
+  const [activeSection, setActiveSection] = useState<MusicSection>(allowedSections[0] ?? 'general')
+  const handleSectionChange = (section: MusicSection) => {
+    if (allowedSections.includes(section)) {
+      setActiveSection(section)
+    }
+  }
   const [chartViewMode, setChartViewMode] = useState<'pdf' | 'lyrics'>('pdf')
   const [draggingSetlistItemId, setDraggingSetlistItemId] = useState<number | null>(null)
   const [dragOverSetlistItemId, setDragOverSetlistItemId] = useState<number | null>(null)
@@ -3279,13 +3286,19 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
 
   return (
     <div className="app">
-      <MusicSidebar activeSection={activeSection} setActiveSection={setActiveSection} onLogout={onLogout} />
+      <MusicSidebar activeSection={activeSection} visibleSections={allowedSections} setActiveSection={handleSectionChange} onLogout={onLogout} />
       <main className="main">
         <MusicHeader />
 
+        {allowedSections.length === 0 && (
+          <Panel title="Sin acceso" subtitle="Tu usuario no tiene módulos asignados en Música.">
+            Solicita a un administrador que te asigne permisos para esta vista.
+          </Panel>
+        )}
+
         {actionStatus && <div className="notice">{actionStatus}</div>}
 
-        {activeSection === 'general' && (
+        {allowedSections.includes('general') && activeSection === 'general' && (
           <section className="section-grid">
             <Panel
               title="Próximos cultos y eventos de Alabanza y Adoración"
@@ -3318,7 +3331,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
                               setPracticeMode('event')
                               setLibraryPracticeSongId(null)
                               setSelectedEventId(item.schedule.event_id)
-                              setActiveSection('ensayo')
+                              handleSectionChange('ensayo')
                             }}
                           >
                             Ensayar
@@ -3331,7 +3344,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
                               setPracticeMode('event')
                               setLibraryPracticeSongId(null)
                               setSelectedEventId(item.schedule.event_id)
-                              setActiveSection('setlist')
+                              handleSectionChange('setlist')
                             }}
                           >
                             Editar setlist
@@ -3423,13 +3436,13 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
           </section>
         )}
 
-        {activeSection === 'ensayo' && (
+        {allowedSections.includes('ensayo') && activeSection === 'ensayo' && (
           <section className="section-grid">
             {renderRehearsalPanel()}
           </section>
         )}
 
-        {activeSection === 'setlist' && (
+        {allowedSections.includes('setlist') && activeSection === 'setlist' && (
           <section className="section-grid">
             <Panel
               title={selectedRehearsal ? `Setlist · ${selectedRehearsal.eventName}` : 'Setlist'}
@@ -3605,7 +3618,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
           </section>
         )}
 
-        {activeSection === 'canciones' && (
+        {allowedSections.includes('canciones') && activeSection === 'canciones' && (
           <section className="section-grid">
             <Panel
               title="Biblioteca de canciones"
@@ -3644,7 +3657,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
                         onClick={() => {
                           setLibraryPracticeSongId(song.id)
                           setPracticeMode('library')
-                          setActiveSection('ensayo')
+                          handleSectionChange('ensayo')
                         }}
                       >
                         <div className="music-library-thumb-wrap">

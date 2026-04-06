@@ -3,11 +3,16 @@ import Panel from './Panel'
 import GenericTable from './GenericTable'
 import {
   useUsers,
+  useRoles,
+  usePermissions,
   useCreateUser,
   useUpdateUser,
   useDeleteUser,
   type User,
+  type Role,
+  type Permission,
 } from '../services/users'
+import { getRoleVariant, MODULE_PERMISSION_OPTIONS, VIEW_OPTIONS, type AppVariant } from '../services/api'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -16,6 +21,8 @@ type FormState = {
   email: string
   password: string
   active: boolean
+  roleIds: number[]
+  permissionIds: number[]
 }
 
 const emptyForm = (): FormState => ({
@@ -23,6 +30,8 @@ const emptyForm = (): FormState => ({
   email: '',
   password: '',
   active: true,
+  roleIds: [],
+  permissionIds: [],
 })
 
 // ── Modal ──────────────────────────────────────────────────────────────────────
@@ -30,6 +39,8 @@ const emptyForm = (): FormState => ({
 type UserModalProps = {
   title: string
   form: FormState
+  roles: Role[]
+  permissions: Permission[]
   setForm: (f: FormState) => void
   error: string | null
   loading: boolean
@@ -38,7 +49,31 @@ type UserModalProps = {
   onClose: () => void
 }
 
-const UserModal = ({ title, form, setForm, error, loading, isEdit, onSubmit, onClose }: UserModalProps) => (
+const variantLabelMap: Record<AppVariant, string> = {
+  admin: 'Administración',
+  music: 'Músicos',
+  volunteers: 'Voluntarios',
+}
+
+const roleLabel = (roleName: string) => {
+  const variant = getRoleVariant(roleName)
+  if (variant === 'admin') return 'Administración'
+  if (variant === 'music') return 'Músicos'
+  if (variant === 'volunteers') return 'Voluntarios'
+  return roleName
+}
+
+const UserModal = ({ title, form, roles, permissions, setForm, error, loading, isEdit, onSubmit, onClose }: UserModalProps) => {
+  const roleByVariant = VIEW_OPTIONS.reduce<Record<AppVariant, Role | null>>((acc, option) => {
+    const matches = roles.filter((role) => getRoleVariant(role.name) === option.variant)
+    const exact = matches.find((role) => role.name.trim().toLowerCase() === option.variant)
+    acc[option.variant] = exact ?? matches[0] ?? null
+    return acc
+  }, { admin: null, music: null, volunteers: null })
+
+  const permissionByName = new Map(permissions.map((permission) => [permission.name.toLowerCase(), permission]))
+
+  return (
   <div className="modal-backdrop" onClick={onClose}>
     <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
       <div className="modal-header">
@@ -87,6 +122,116 @@ const UserModal = ({ title, form, setForm, error, loading, isEdit, onSubmit, onC
           />
           Cuenta activa
         </label>
+        <div className="field">
+          <span>Vistas con acceso</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {VIEW_OPTIONS.map((option) => {
+              const role = roleByVariant[option.variant]
+              if (!role) return null
+              const checked = form.roleIds.includes(role.id)
+              return (
+                <label
+                  key={option.variant}
+                  className="module-chip"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    background: checked ? 'rgba(34,197,94,.14)' : undefined,
+                    borderColor: checked ? '#86efac' : undefined,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      const nextRoleIds = checked
+                        ? form.roleIds.filter((roleId) => roleId !== role.id)
+                        : [...form.roleIds, role.id]
+
+                      const variantPermissions = MODULE_PERMISSION_OPTIONS[option.variant]
+                        .map((item) => permissionByName.get(item.permissionName)?.id)
+                        .filter((permissionId): permissionId is number => Boolean(permissionId))
+
+                      const nextPermissionIds = checked
+                        ? form.permissionIds.filter((permissionId) => !variantPermissions.includes(permissionId))
+                        : [...new Set([...form.permissionIds, ...variantPermissions])]
+
+                      setForm({ ...form, roleIds: nextRoleIds, permissionIds: nextPermissionIds })
+                    }}
+                  />
+                  {option.label}
+                </label>
+              )
+            })}
+          </div>
+        </div>
+        {VIEW_OPTIONS.map((option) => {
+          const role = roleByVariant[option.variant]
+          const enabled = Boolean(role && form.roleIds.includes(role.id))
+          return (
+            <div
+              className="field"
+              key={`permissions-${option.variant}`}
+              style={{ opacity: enabled ? 1 : 0.55 }}
+            >
+              <span>
+                Módulos de {variantLabelMap[option.variant]}
+                {!enabled ? ' (activa primero la vista)' : ''}
+              </span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {MODULE_PERMISSION_OPTIONS[option.variant].map((optionPermission) => {
+                  const permission = permissionByName.get(optionPermission.permissionName)
+                  if (!permission) return null
+                  const checked = form.permissionIds.includes(permission.id)
+                  return (
+                    <label
+                      key={optionPermission.permissionName}
+                      className="module-chip"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        cursor: enabled ? 'pointer' : 'not-allowed',
+                        background: checked ? 'rgba(59,130,246,.14)' : undefined,
+                        borderColor: checked ? '#93c5fd' : undefined,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!enabled}
+                        onChange={() => {
+                          const nextPermissionIds = checked
+                            ? form.permissionIds.filter((permissionId) => permissionId !== permission.id)
+                            : [...form.permissionIds, permission.id]
+                          setForm({ ...form, permissionIds: nextPermissionIds })
+                        }}
+                      />
+                      {optionPermission.label}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+        <div className="field">
+          <span>Vistas asignadas</span>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {form.roleIds.length === 0 ? (
+              <span className="module-chip">Sin accesos</span>
+            ) : (
+              VIEW_OPTIONS.filter((option) => {
+                const role = roleByVariant[option.variant]
+                return role ? form.roleIds.includes(role.id) : false
+              }).map((option) => (
+                <span key={`selected-${option.variant}`} className="module-chip">{option.label}</span>
+              ))
+            )}
+          </div>
+        </div>
         {error && <div className="notice notice--error">{error}</div>}
         <div className="row-actions">
           <button className="primary" type="submit" disabled={loading}>
@@ -99,7 +244,7 @@ const UserModal = ({ title, form, setForm, error, loading, isEdit, onSubmit, onC
       </form>
     </div>
   </div>
-)
+)}
 
 // ── Delete confirm ─────────────────────────────────────────────────────────────
 
@@ -139,6 +284,8 @@ const DeleteConfirm = ({ user, loading, error, onConfirm, onCancel }: DeleteConf
 
 const AdminUsersPanel: React.FC = () => {
   const { data: users = [], isLoading, error: fetchError } = useUsers()
+  const { data: allRoles = [], error: rolesError } = useRoles()
+  const { data: permissions = [], error: permissionsError } = usePermissions()
   const createUser = useCreateUser()
   const updateUser = useUpdateUser()
   const deleteUser = useDeleteUser()
@@ -158,6 +305,8 @@ const AdminUsersPanel: React.FC = () => {
     )
   })
 
+  const roles = allRoles.filter((role) => getRoleVariant(role.name) !== null)
+
   const openCreate = () => {
     setForm(emptyForm())
     setMutationError(null)
@@ -165,7 +314,14 @@ const AdminUsersPanel: React.FC = () => {
   }
 
   const openEdit = (user: User) => {
-    setForm({ username: user.username, email: user.email, password: '', active: user.active })
+    setForm({
+      username: user.username,
+      email: user.email,
+      password: '',
+      active: user.active,
+      roleIds: user.roles.map((role) => role.id),
+      permissionIds: user.permissions.map((permission) => permission.id),
+    })
     setMutationError(null)
     setEditTarget(user)
   }
@@ -192,6 +348,8 @@ const AdminUsersPanel: React.FC = () => {
         password: form.password,
         active: form.active,
         person_id: null,
+        role_ids: form.roleIds,
+        permission_ids: form.permissionIds,
       })
       closeAll()
     } catch (err: any) {
@@ -212,6 +370,8 @@ const AdminUsersPanel: React.FC = () => {
           password: form.password || undefined,
           active: form.active,
           person_id: editTarget.person_id ?? null,
+          role_ids: form.roleIds,
+          permission_ids: form.permissionIds,
         },
       })
       closeAll()
@@ -261,14 +421,70 @@ const AdminUsersPanel: React.FC = () => {
           <div className="notice notice--error">Error al cargar usuarios</div>
         )}
 
+        {rolesError && (
+          <div className="notice notice--error">Error al cargar roles</div>
+        )}
+
+        {permissionsError && (
+          <div className="notice notice--error">Error al cargar permisos</div>
+        )}
+
         <GenericTable<User>
           loading={isLoading}
           emptyMessage="No hay usuarios registrados."
           rows={filtered}
           columns={[
-            { key: 'id', label: 'ID' },
             { key: 'username', label: 'Usuario' },
             { key: 'email', label: 'Correo' },
+            {
+              key: 'roles',
+              label: 'Accesos',
+              render: (value) => {
+                const userRoles = Array.isArray(value) ? value as Role[] : []
+                if (userRoles.length === 0) return 'Sin accesos'
+                const seen = new Set<string>()
+                return (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {userRoles
+                      .filter((role) => {
+                        const variant = getRoleVariant(role.name)
+                        if (!variant || seen.has(variant)) return false
+                        seen.add(variant)
+                        return true
+                      })
+                      .map((role) => (
+                        <span key={role.id} className="module-chip">
+                          {roleLabel(role.name)}
+                        </span>
+                      ))}
+                  </div>
+                )
+              },
+            },
+            {
+              key: 'permissions',
+              label: 'Módulos permitidos',
+              render: (value) => {
+                const userPermissions = Array.isArray(value) ? value as Permission[] : []
+                if (userPermissions.length === 0) return 'Sin módulos'
+                const labels = userPermissions.map((permission) => {
+                  for (const variant of Object.keys(MODULE_PERMISSION_OPTIONS) as AppVariant[]) {
+                    const match = MODULE_PERMISSION_OPTIONS[variant].find((item) => item.permissionName === permission.name)
+                    if (match) {
+                      return `${variantLabelMap[variant]} · ${match.label}`
+                    }
+                  }
+                  return permission.name
+                })
+                return (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {labels.map((label) => (
+                      <span key={label} className="module-chip">{label}</span>
+                    ))}
+                  </div>
+                )
+              },
+            },
             {
               key: 'active',
               label: 'Activo',
@@ -321,6 +537,8 @@ const AdminUsersPanel: React.FC = () => {
         <UserModal
           title="Crear usuario"
           form={form}
+          roles={roles}
+          permissions={permissions}
           setForm={setForm}
           error={mutationError}
           loading={createUser.isPending}
@@ -334,6 +552,8 @@ const AdminUsersPanel: React.FC = () => {
         <UserModal
           title={`Editar: ${editTarget.username}`}
           form={form}
+          roles={roles}
+          permissions={permissions}
           setForm={setForm}
           error={mutationError}
           loading={updateUser.isPending}

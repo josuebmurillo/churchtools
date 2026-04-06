@@ -4,12 +4,13 @@ type MusicSection = 'general' | 'ensayo' | 'setlist' | 'canciones'
 
 type MusicSidebarProps = {
   activeSection: MusicSection
+  visibleSections?: MusicSection[]
   setActiveSection: (section: MusicSection) => void
   onLogout: () => void
 }
 
 import React from 'react'
-const MusicSidebar = React.memo(({ activeSection, setActiveSection, onLogout }: MusicSidebarProps) => {
+const MusicSidebar = React.memo(({ activeSection, visibleSections, setActiveSection, onLogout }: MusicSidebarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const handleSectionChange = (section: MusicSection) => {
@@ -21,6 +22,13 @@ const MusicSidebar = React.memo(({ activeSection, setActiveSection, onLogout }: 
     setIsMenuOpen(false)
     onLogout()
   }
+
+  const items = [
+    { key: 'general', label: 'General' },
+    { key: 'ensayo', label: 'Ensayo' },
+    { key: 'setlist', label: 'Setlist' },
+    { key: 'canciones', label: 'Canciones' },
+  ].filter((item) => !visibleSections || visibleSections.includes(item.key as MusicSection))
 
   return (
     <aside className={`sidebar ${isMenuOpen ? 'is-open' : ''}`}>
@@ -45,12 +53,7 @@ const MusicSidebar = React.memo(({ activeSection, setActiveSection, onLogout }: 
 
       <div className="sidebar-collapsible">
         <nav className="section-tabs">
-          {[
-            { key: 'general', label: 'General' },
-            { key: 'ensayo', label: 'Ensayo' },
-            { key: 'setlist', label: 'Setlist' },
-            { key: 'canciones', label: 'Canciones' },
-          ].map((item) => (
+          {items.map((item) => (
             <button
               key={item.key}
               className={activeSection === item.key ? 'active' : ''}

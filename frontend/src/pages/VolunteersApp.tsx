@@ -4,7 +4,7 @@ import VolunteersHeader from '../components/VolunteersHeader'
 import VolunteersSidebar, { type VolunteersSection } from '../components/VolunteersSidebar'
 import Panel from '../components/Panel'
 import { useApiData } from '../hooks/useApiData'
-import { buildUrl } from '../services/api'
+import { buildUrl, getAllowedSections, getAuthUser } from '../services/api'
 import type { Event, Shift, ShiftAssignment } from '../types'
 
 type VolunteersAppProps = {
@@ -16,12 +16,14 @@ type ShiftAssignmentRow = ShiftAssignment & {
 }
 
 const VolunteersApp = ({ onLogout }: VolunteersAppProps) => {
+  const currentUser = getAuthUser()
+  const allowedSections = getAllowedSections('volunteers', currentUser?.permissions ?? []) as VolunteersSection[]
   const events = useApiData<Event[]>(buildUrl('events', '/events'), [])
   const shifts = useApiData<Shift[]>(buildUrl('volunteers', '/shifts'), [])
   const assignments = useApiData<ShiftAssignment[]>(buildUrl('volunteers', '/shift-assignments'), [])
 
   const [personFilter, setPersonFilter] = useState('')
-  const [activeSection, setActiveSection] = useState<VolunteersSection>('eventos')
+  const [activeSection, setActiveSection] = useState<VolunteersSection>(allowedSections[0] ?? 'eventos')
 
   const eventsById = useMemo(() => {
     const map = new Map<number, Event>()
@@ -43,10 +45,22 @@ const VolunteersApp = ({ onLogout }: VolunteersAppProps) => {
 
   return (
     <div className="app">
-      <VolunteersSidebar activeSection={activeSection} setActiveSection={setActiveSection} onLogout={onLogout} />
+      <VolunteersSidebar
+        activeSection={activeSection}
+        visibleSections={allowedSections}
+        setActiveSection={setActiveSection}
+        onLogout={onLogout}
+      />
       <main className="main">
         <VolunteersHeader />
 
+        {allowedSections.length === 0 && (
+          <Panel title="Sin acceso" subtitle="Tu usuario no tiene módulos asignados en Voluntarios.">
+            Solicita a un administrador que te asigne permisos para esta vista.
+          </Panel>
+        )}
+
+        {allowedSections.includes('asignaciones') && (
         <Panel title="Filtrar asignaciones" subtitle="Ingresa el ID de la persona para ver sus turnos asignados.">
           <div className="form inline">
             <input
@@ -57,8 +71,9 @@ const VolunteersApp = ({ onLogout }: VolunteersAppProps) => {
             />
           </div>
         </Panel>
+        )}
 
-        {activeSection === 'eventos' && (
+        {allowedSections.includes('eventos') && activeSection === 'eventos' && (
           <Panel title="Eventos" subtitle="Consulta la agenda de eventos para planificar cobertura.">
             <GenericTable
               columns={[
@@ -74,7 +89,7 @@ const VolunteersApp = ({ onLogout }: VolunteersAppProps) => {
           </Panel>
         )}
 
-        {activeSection === 'turnos' && (
+        {allowedSections.includes('turnos') && activeSection === 'turnos' && (
           <Panel title="Turnos" subtitle="Revisa los turnos programados por evento y rol.">
             <GenericTable
               columns={[
@@ -91,7 +106,7 @@ const VolunteersApp = ({ onLogout }: VolunteersAppProps) => {
           </Panel>
         )}
 
-        {activeSection === 'asignaciones' && (
+        {allowedSections.includes('asignaciones') && activeSection === 'asignaciones' && (
           <Panel title="Asignaciones" subtitle="Valida quién está asignado a cada turno.">
             <GenericTable
               columns={[

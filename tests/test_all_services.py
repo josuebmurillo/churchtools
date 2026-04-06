@@ -13,6 +13,23 @@ import pytest
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 AUTH_URL = os.getenv("AUTH_URL", "http://localhost:8009")
 
+
+def module_variant_for_role(role_name: str) -> str | None:
+    normalized = (
+        role_name.strip().lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+    )
+    if normalized in {"admin", "administracion"}:
+        return "admin"
+    if normalized in {"music", "musica", "musicos"}:
+        return "music"
+    if normalized in {"volunteers", "volunteer", "voluntario", "voluntarios"}:
+        return "volunteers"
+    return None
+
+
+def permission_key(permission_name: str) -> str:
+    return permission_name.strip().lower()
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -97,6 +114,18 @@ class TestHealthChecks:
 
 
 class TestSecurity:
+    def test_roles_seeded_for_module_access(self, admin_token: str):
+        resp = raw(8009, "/roles", headers={"Authorization": f"Bearer {admin_token}"})
+        assert resp.status_code == 200, resp.text
+        module_variants = {module_variant_for_role(role["name"]) for role in resp.json()}
+        assert {"admin", "music", "volunteers"}.issubset(module_variants)
+
+    def test_permissions_seeded_for_modules(self, admin_token: str):
+        resp = raw(8009, "/permissions", headers={"Authorization": f"Bearer {admin_token}"})
+        assert resp.status_code == 200, resp.text
+        permission_names = {permission_key(permission["name"]) for permission in resp.json()}
+        assert {"admin:ministerios", "music:ensayo", "volunteers:turnos"}.issubset(permission_names)
+
     def test_login_valid(self, admin_token: str):
         assert len(admin_token) > 20
 
@@ -117,6 +146,10 @@ class TestSecurity:
         me = me_resp.json()
         assert me["email"] == "admin@iglesia.com"
         assert me["active"] is True
+        assert "roles" in me
+        assert "permissions" in me
+        assert any(module_variant_for_role(role["name"]) == "admin" for role in me["roles"])
+        assert "admin:usuarios" in {permission_key(permission["name"]) for permission in me["permissions"]}
 
     def test_login_wrong_password(self):
         resp = httpx.post(
@@ -179,6 +212,64 @@ class TestSecurity:
         resp = gw("/security/users", token=admin_token)
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
+
+    def test_create_user_with_module_roles_and_update_them(self, admin_token: str):
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+        roles_resp = raw(8009, "/roles", headers=admin_headers)
+        assert roles_resp.status_code == 200, roles_resp.text
+        roles = {module_variant_for_role(role["name"]): role["id"] for role in roles_resp.json() if module_variant_for_role(role["name"])}
+        permissions_resp = raw(8009, "/permissions", headers=admin_headers)
+        assert permissions_resp.status_code == 200, permissions_resp.text
+        permissions = {permission_key(permission["name"]): permission["id"] for permission in permissions_resp.json()}
+
+        uid = uuid4().hex[:8]
+        create_payload = {
+            "username": f"modules_{uid}",
+            "email": f"modules_{uid}@test.com",
+            "password": "TestPass123!",
+            "active": True,
+            "role_ids": [roles["music"], roles["volunteers"]],
+            "permission_ids": [permissions["music:ensayo"], permissions["volunteers:turnos"]],
+        }
+        create_resp = raw(8009, "/users", method="POST", headers=admin_headers, json=create_payload)
+        assert create_resp.status_code == 200, create_resp.text
+        created_user = create_resp.json()
+        created_role_names = {module_variant_for_role(role["name"]) for role in created_user["roles"]}
+        assert created_role_names == {"music", "volunteers"}
+        assert {permission_key(permission["name"]) for permission in created_user["permissions"]} == {"music:ensayo", "volunteers:turnos"}
+
+        login_resp = raw(
+            8009,
+            "/auth/login",
+            method="POST",
+            json={"identifier": create_payload["email"], "password": create_payload["password"]},
+        )
+        assert login_resp.status_code == 200, login_resp.text
+        user_token = login_resp.json()["access_token"]
+        me_resp = raw(8009, "/auth/me", headers={"Authorization": f"Bearer {user_token}"})
+        assert me_resp.status_code == 200, me_resp.text
+        assert {module_variant_for_role(role["name"]) for role in me_resp.json()["roles"]} == {"music", "volunteers"}
+        assert {permission_key(permission["name"]) for permission in me_resp.json()["permissions"]} == {"music:ensayo", "volunteers:turnos"}
+
+        update_resp = raw(
+            8009,
+            f"/users/{created_user['id']}",
+            method="PUT",
+            headers=admin_headers,
+            json={
+                "username": create_payload["username"],
+                "email": create_payload["email"],
+                "active": True,
+                "role_ids": [roles["music"]],
+                "permission_ids": [permissions["music:general"], permissions["music:setlist"]],
+            },
+        )
+        assert update_resp.status_code == 200, update_resp.text
+        assert {module_variant_for_role(role["name"]) for role in update_resp.json()["roles"]} == {"music"}
+        assert {permission_key(permission["name"]) for permission in update_resp.json()["permissions"]} == {"music:general", "music:setlist"}
+
+        cleanup_resp = raw(8009, f"/users/{created_user['id']}", method="DELETE", headers=admin_headers)
+        assert cleanup_resp.status_code in (200, 204)
 
     def test_non_admin_cannot_access_users_crud(self):
         uid = uuid4().hex[:8]
@@ -408,8 +499,8 @@ class TestVendors:
         resp = raw(8014, "/vendors", method="POST", json={"category": "Otro"})
         assert resp.status_code == 422
 
-    def test_vendors_via_gateway(self):
-        resp = gw("/vendors/vendors")
+    def test_vendors_via_gateway(self, admin_token: str):
+        resp = gw("/vendors/vendors", token=admin_token)
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
@@ -706,10 +797,52 @@ class TestGateway:
             "/vendors/vendors",
         ],
     )
-    def test_gateway_routes_to_services(self, path: str):
-        resp = gw(path)
+    def test_gateway_routes_to_services(self, path: str, admin_token: str):
+        resp = gw(path, token=admin_token)
         assert resp.status_code == 200, f"Gateway route {path} failed"
         assert isinstance(resp.json(), list)
+
+    def test_gateway_blocks_missing_module_permission(self, admin_token: str):
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+        roles_resp = raw(8009, "/roles", headers=admin_headers)
+        assert roles_resp.status_code == 200, roles_resp.text
+        roles = {module_variant_for_role(role["name"]): role["id"] for role in roles_resp.json() if module_variant_for_role(role["name"])}
+
+        permissions_resp = raw(8009, "/permissions", headers=admin_headers)
+        assert permissions_resp.status_code == 200, permissions_resp.text
+        permissions = {permission_key(permission["name"]): permission["id"] for permission in permissions_resp.json()}
+
+        uid = uuid4().hex[:8]
+        user_payload = {
+            "username": f"gwperm_{uid}",
+            "email": f"gwperm_{uid}@test.com",
+            "password": "TestPass123!",
+            "active": True,
+            "role_ids": [roles["volunteers"]],
+            "permission_ids": [permissions["volunteers:eventos"]],
+        }
+        create_resp = raw(8009, "/users", method="POST", headers=admin_headers, json=user_payload)
+        assert create_resp.status_code == 200, create_resp.text
+        created_user_id = create_resp.json()["id"]
+
+        try:
+            login_resp = raw(
+                8009,
+                "/auth/login",
+                method="POST",
+                json={"identifier": user_payload["email"], "password": user_payload["password"]},
+            )
+            assert login_resp.status_code == 200, login_resp.text
+            user_token = login_resp.json()["access_token"]
+
+            allowed_resp = gw("/events/events", token=user_token)
+            assert allowed_resp.status_code == 200
+
+            blocked_resp = gw("/volunteers/shifts", token=user_token)
+            assert blocked_resp.status_code == 403
+        finally:
+            cleanup_resp = raw(8009, f"/users/{created_user_id}", method="DELETE", headers=admin_headers)
+            assert cleanup_resp.status_code in (200, 204)
 
     def test_gateway_404_for_unknown_service(self):
         resp = gw("/nonexistent-service/something")

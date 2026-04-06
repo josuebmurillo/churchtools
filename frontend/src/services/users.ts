@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { buildUrl, fetchJson } from './api'
+import { buildUrl, fetchJson, type AuthPermission } from './api'
+
+export type Role = {
+  id: number
+  name: string
+  description?: string | null
+}
 
 export type User = {
   id: number
@@ -7,7 +13,11 @@ export type User = {
   username: string
   email: string
   active: boolean
+  roles: Role[]
+  permissions: AuthPermission[]
 }
+
+export type Permission = AuthPermission
 
 export type UserCreatePayload = {
   username: string
@@ -15,6 +25,8 @@ export type UserCreatePayload = {
   password: string
   person_id?: number | null
   active: boolean
+  role_ids: number[]
+  permission_ids: number[]
 }
 
 export type UserUpdatePayload = {
@@ -23,14 +35,34 @@ export type UserUpdatePayload = {
   password?: string
   person_id?: number | null
   active: boolean
+  role_ids: number[]
+  permission_ids: number[]
 }
 
 const USERS_KEY = ['users']
+const ROLES_KEY = ['roles']
+const PERMISSIONS_KEY = ['permissions']
 
 export function useUsers() {
   return useQuery<User[]>({
     queryKey: USERS_KEY,
     queryFn: () => fetchJson<User[]>(buildUrl('security', '/users')),
+    staleTime: 30_000,
+  })
+}
+
+export function useRoles() {
+  return useQuery<Role[]>({
+    queryKey: ROLES_KEY,
+    queryFn: () => fetchJson<Role[]>(buildUrl('security', '/roles')),
+    staleTime: 30_000,
+  })
+}
+
+export function usePermissions() {
+  return useQuery<Permission[]>({
+    queryKey: PERMISSIONS_KEY,
+    queryFn: () => fetchJson<Permission[]>(buildUrl('security', '/permissions')),
     staleTime: 30_000,
   })
 }
