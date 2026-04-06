@@ -69,6 +69,35 @@ class RolePermissionModel(Base):
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        admin_role = (
+            db.query(RoleModel)
+            .filter(func.lower(RoleModel.name) == "admin")
+            .first()
+        )
+        if not admin_role:
+            admin_role = RoleModel(name="admin", description="System administrator")
+            db.add(admin_role)
+            db.commit()
+            db.refresh(admin_role)
+
+        bootstrap_admin = (
+            db.query(UserModel)
+            .filter(
+                (func.lower(UserModel.email) == "admin@iglesia.com")
+                | (func.lower(UserModel.username) == "admin")
+            )
+            .first()
+        )
+        if bootstrap_admin:
+            role_link = (
+                db.query(UserRoleModel)
+                .filter_by(user_id=bootstrap_admin.id, role_id=admin_role.id)
+                .first()
+            )
+            if not role_link:
+                db.add(UserRoleModel(user_id=bootstrap_admin.id, role_id=admin_role.id))
+                db.commit()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -114,6 +143,24 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> UserModel:
         return user
 
 
+def is_admin_user(db, user_id: int) -> bool:
+    return (
+        db.query(UserRoleModel)
+        .join(RoleModel, UserRoleModel.role_id == RoleModel.id)
+        .filter(UserRoleModel.user_id == user_id)
+        .filter(func.lower(RoleModel.name) == "admin")
+        .first()
+        is not None
+    )
+
+
+def get_admin_user(current_user: UserModel = Depends(get_current_user)) -> UserModel:
+    with SessionLocal() as db:
+        if not is_admin_user(db, current_user.id):
+            raise HTTPException(status_code=403, detail="Admin role required")
+    return current_user
+
+
 class UserCreate(BaseModel):
     person_id: Optional[int] = None
     username: str
@@ -150,6 +197,11 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class LoginRequest(BaseModel):
+    identifier: str
+    password: str
+
+
 class RoleCreate(BaseModel):
     name: str
     description: Optional[str] = None
@@ -176,13 +228,13 @@ def health():
 
 
 @app.get("/users", response_model=list[UserPublic])
-def list_users(current_user: UserModel = Depends(get_current_user)):
+def list_users(current_user: UserModel = Depends(get_admin_user)):
     with SessionLocal() as db:
         return db.query(UserModel).all()
 
 
 @app.post("/users", response_model=UserPublic)
-def create_user(payload: UserCreate, current_user: UserModel = Depends(get_current_user)):
+def create_user(payload: UserCreate, current_user: UserModel = Depends(get_admin_user)):
     with SessionLocal() as db:
         if get_user_by_username(db, payload.username) or get_user_by_email(db, payload.email):
             raise HTTPException(status_code=400, detail="User already exists")
@@ -201,7 +253,7 @@ def create_user(payload: UserCreate, current_user: UserModel = Depends(get_curre
 
 
 @app.get("/users/{user_id}", response_model=UserPublic)
-def get_user(user_id: int, current_user: UserModel = Depends(get_current_user)):
+def get_user(user_id: int, current_user: UserModel = Depends(get_admin_user)):
     with SessionLocal() as db:
         user = db.get(UserModel, user_id)
         if not user:
@@ -210,7 +262,7 @@ def get_user(user_id: int, current_user: UserModel = Depends(get_current_user)):
 
 
 @app.put("/users/{user_id}", response_model=UserPublic)
-def update_user(user_id: int, payload: UserUpdate, current_user: UserModel = Depends(get_current_user)):
+def update_user(user_id: int, payload: UserUpdate, current_user: UserModel = Depends(get_admin_user)):
     with SessionLocal() as db:
         user = db.get(UserModel, user_id)
         if not user:
@@ -242,7 +294,7 @@ def update_user(user_id: int, payload: UserUpdate, current_user: UserModel = Dep
 
 
 @app.delete("/users/{user_id}")
-def delete_user(user_id: int, current_user: UserModel = Depends(get_current_user)):
+def delete_user(user_id: int, current_user: UserModel = Depends(get_admin_user)):
     with SessionLocal() as db:
         user = db.get(UserModel, user_id)
         if not user:
@@ -416,9 +468,10 @@ def register(payload: UserCreate):
 
 
 @app.post("/auth/login", response_model=Token)
-def login(payload: UserCreate):
+def login(payload: LoginRequest):
     with SessionLocal() as db:
-        user = get_user_by_username(db, payload.username) or get_user_by_email(db, payload.email)
+        identifier = payload.identifier.strip()
+        user = get_user_by_username(db, identifier) or get_user_by_email(db, identifier)
         if not user or not verify_password(payload.password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         if not user.active:

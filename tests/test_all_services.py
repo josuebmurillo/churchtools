@@ -41,7 +41,7 @@ def admin_token() -> str:
     """Obtain a valid JWT for the admin user."""
     resp = httpx.post(
         f"{AUTH_URL}/auth/login",
-        json={"username": "admin@iglesia.com", "email": "admin@iglesia.com", "password": "Admin2026"},
+        json={"identifier": "admin@iglesia.com", "password": "Admin2026"},
         timeout=10,
     )
     assert resp.status_code == 200, f"Login failed: {resp.text}"
@@ -100,16 +100,73 @@ class TestSecurity:
     def test_login_valid(self, admin_token: str):
         assert len(admin_token) > 20
 
+    def test_login_returns_bearer_token_and_me_works(self):
+        login_resp = httpx.post(
+            f"{AUTH_URL}/auth/login",
+            json={"identifier": "admin@iglesia.com", "password": "Admin2026"},
+            timeout=10,
+        )
+        assert login_resp.status_code == 200, login_resp.text
+        body = login_resp.json()
+        assert body.get("token_type") == "bearer"
+        assert isinstance(body.get("access_token"), str)
+        assert len(body["access_token"]) > 20
+
+        me_resp = raw(8009, "/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"})
+        assert me_resp.status_code == 200
+        me = me_resp.json()
+        assert me["email"] == "admin@iglesia.com"
+        assert me["active"] is True
+
     def test_login_wrong_password(self):
         resp = httpx.post(
             f"{AUTH_URL}/auth/login",
-            json={"username": "admin@iglesia.com", "email": "admin@iglesia.com", "password": "WrongPwd!"},
+            json={"identifier": "admin@iglesia.com", "password": "WrongPwd!"},
             timeout=10,
         )
         assert resp.status_code == 401
 
+    def test_login_validation_missing_required_fields(self):
+        resp = httpx.post(
+            f"{AUTH_URL}/auth/login",
+            json={"password": "Admin2026"},
+            timeout=10,
+        )
+        assert resp.status_code == 422
+
+    def test_auth_me_requires_token(self):
+        resp = raw(8009, "/auth/me")
+        assert resp.status_code == 401
+
+    def test_auth_me_invalid_token_rejected(self):
+        resp = raw(8009, "/auth/me", headers={"Authorization": "Bearer not-a-valid-jwt"})
+        assert resp.status_code == 401
+
+    def test_login_inactive_user_forbidden(self):
+        uid = uuid4().hex[:8]
+        payload = {
+            "username": f"inactive_{uid}",
+            "email": f"inactive_{uid}@test.com",
+            "password": "TestPass123!",
+            "active": False,
+        }
+        register_resp = raw(8009, "/auth/register", method="POST", json=payload)
+        assert register_resp.status_code == 200, register_resp.text
+
+        login_resp = raw(
+            8009,
+            "/auth/login",
+            method="POST",
+            json={"identifier": payload["email"], "password": payload["password"]},
+        )
+        assert login_resp.status_code == 403
+
     def test_list_users_requires_auth(self):
         resp = raw(8009, "/users")
+        assert resp.status_code == 401
+
+    def test_security_users_via_gateway_requires_auth(self):
+        resp = gw("/security/users")
         assert resp.status_code == 401
 
     def test_list_users_authenticated(self, admin_token: str):
@@ -117,6 +174,105 @@ class TestSecurity:
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
         assert len(resp.json()) >= 1
+
+    def test_security_users_via_gateway_authenticated(self, admin_token: str):
+        resp = gw("/security/users", token=admin_token)
+        assert resp.status_code == 200
+        assert isinstance(resp.json(), list)
+
+    def test_non_admin_cannot_access_users_crud(self):
+        uid = uuid4().hex[:8]
+        email = f"rbac_{uid}@test.com"
+        register_payload = {
+            "username": f"rbac_{uid}",
+            "email": email,
+            "password": "TestPass123!",
+            "active": True,
+        }
+        register_resp = raw(8009, "/auth/register", method="POST", json=register_payload)
+        assert register_resp.status_code == 200, register_resp.text
+
+        token_resp = raw(
+            8009,
+            "/auth/login",
+            method="POST",
+            json={"identifier": email, "password": register_payload["password"]},
+        )
+        assert token_resp.status_code == 200, token_resp.text
+        token = token_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        list_resp = raw(8009, "/users", headers=headers)
+        assert list_resp.status_code == 403
+
+        create_resp = raw(
+            8009,
+            "/users",
+            method="POST",
+            headers=headers,
+            json={
+                "username": f"blocked_{uid}",
+                "email": f"blocked_{uid}@test.com",
+                "password": "TestPass123!",
+                "active": True,
+            },
+        )
+        assert create_resp.status_code == 403
+
+    def test_non_admin_cannot_get_update_delete_users(self, admin_token: str):
+        uid = uuid4().hex[:8]
+        email = f"rbac2_{uid}@test.com"
+        register_payload = {
+            "username": f"rbac2_{uid}",
+            "email": email,
+            "password": "TestPass123!",
+            "active": True,
+        }
+        register_resp = raw(8009, "/auth/register", method="POST", json=register_payload)
+        assert register_resp.status_code == 200, register_resp.text
+
+        non_admin_login = raw(
+            8009,
+            "/auth/login",
+            method="POST",
+            json={"identifier": email, "password": register_payload["password"]},
+        )
+        assert non_admin_login.status_code == 200, non_admin_login.text
+        non_admin_headers = {"Authorization": f"Bearer {non_admin_login.json()['access_token']}"}
+
+        target_payload = {
+            "username": f"target_{uid}",
+            "email": f"target_{uid}@test.com",
+            "password": "TargetPass123!",
+            "active": True,
+        }
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+        target_create = raw(8009, "/users", method="POST", headers=admin_headers, json=target_payload)
+        assert target_create.status_code == 200, target_create.text
+        target_user = target_create.json()
+        target_user_id = target_user["id"]
+
+        get_resp = raw(8009, f"/users/{target_user_id}", headers=non_admin_headers)
+        assert get_resp.status_code == 403
+
+        update_resp = raw(
+            8009,
+            f"/users/{target_user_id}",
+            method="PUT",
+            headers=non_admin_headers,
+            json={
+                "username": target_payload["username"],
+                "email": target_payload["email"],
+                "active": False,
+            },
+        )
+        assert update_resp.status_code == 403
+
+        delete_resp = raw(8009, f"/users/{target_user_id}", method="DELETE", headers=non_admin_headers)
+        assert delete_resp.status_code == 403
+
+        cleanup_resp = raw(8009, f"/users/{target_user_id}", method="DELETE", headers=admin_headers)
+        assert cleanup_resp.status_code in (200, 204)
 
     def test_create_and_delete_user(self, admin_token: str):
         uid = uuid4().hex[:8]

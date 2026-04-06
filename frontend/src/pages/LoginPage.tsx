@@ -48,7 +48,7 @@ const LoginPage = ({ onLogin, initialVariant }: LoginPageProps) => {
         const res = await fetch(buildUrl('security', '/auth/login'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: email, email, password }),
+          body: JSON.stringify({ identifier: email, password }),
         })
         if (!res.ok) {
           const detail = await res.text()
@@ -72,7 +72,7 @@ const LoginPage = ({ onLogin, initialVariant }: LoginPageProps) => {
         const loginRes = await fetch(buildUrl('security', '/auth/login'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: email, email, password }),
+          body: JSON.stringify({ identifier: email, password }),
         })
         if (!loginRes.ok) {
           throw new Error('Usuario creado, pero error al iniciar sesión')
