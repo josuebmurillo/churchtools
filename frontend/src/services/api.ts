@@ -113,6 +113,12 @@ export const fetchJson = async <T,>(url: string, options: RequestInit = {}): Pro
   const response = await fetch(url, { ...options, headers })
   if (!response.ok) {
     const detail = await response.text()
+    if (response.status === 401) {
+      clearAuthToken()
+      clearAuthUser()
+      localStorage.removeItem('auth')
+      throw new Error('Sesion expirada. Inicia sesion nuevamente.')
+    }
     throw new Error(detail || `HTTP ${response.status}`)
   }
   return (await response.json()) as T
