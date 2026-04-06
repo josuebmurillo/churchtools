@@ -462,30 +462,6 @@ const AdminUsersPanel: React.FC = () => {
               },
             },
             {
-              key: 'permissions',
-              label: 'Módulos permitidos',
-              render: (value) => {
-                const userPermissions = Array.isArray(value) ? value as Permission[] : []
-                if (userPermissions.length === 0) return 'Sin módulos'
-                const labels = userPermissions.map((permission) => {
-                  for (const variant of Object.keys(MODULE_PERMISSION_OPTIONS) as AppVariant[]) {
-                    const match = MODULE_PERMISSION_OPTIONS[variant].find((item) => item.permissionName === permission.name)
-                    if (match) {
-                      return `${variantLabelMap[variant]} · ${match.label}`
-                    }
-                  }
-                  return permission.name
-                })
-                return (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {labels.map((label) => (
-                      <span key={label} className="module-chip">{label}</span>
-                    ))}
-                  </div>
-                )
-              },
-            },
-            {
               key: 'active',
               label: 'Activo',
               render: (val) => (
