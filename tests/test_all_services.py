@@ -549,6 +549,51 @@ class TestMinistries:
         dup = raw(8002, "/team-members", method="POST", json={"person_id": person_id, "team_id": team["id"]})
         assert dup.status_code == 400
 
+    def test_delete_ministry_with_cascade(self, person_id: int):
+        ministry = raw(8002, "/ministries", method="POST", json={"name": f"Min {uuid4().hex[:8]}"}).json()
+        team = raw(
+            8002,
+            "/teams",
+            method="POST",
+            json={"name": f"Team {uuid4().hex[:8]}", "ministry_id": ministry["id"]},
+        ).json()
+        role = raw(
+            8002,
+            "/team-roles",
+            method="POST",
+            json={"name": f"Role {uuid4().hex[:8]}", "ministry_id": ministry["id"]},
+        ).json()
+        member = raw(
+            8002,
+            "/team-members",
+            method="POST",
+            json={"person_id": person_id, "team_id": team["id"], "role_id": role["id"]},
+        )
+        assert member.status_code == 200
+
+        preview = raw(8002, f"/ministries/{ministry['id']}/delete-preview")
+        assert preview.status_code == 200, preview.text
+        preview_body = preview.json()
+        assert preview_body["requires_cascade"] is True
+        assert preview_body["teams"] == 1
+        assert preview_body["team_roles"] == 1
+        assert preview_body["team_members"] == 1
+
+        blocked = raw(8002, f"/ministries/{ministry['id']}", method="DELETE")
+        assert blocked.status_code == 409
+
+        deleted = raw(8002, f"/ministries/{ministry['id']}?cascade=true", method="DELETE")
+        assert deleted.status_code == 200, deleted.text
+        body = deleted.json()
+        assert body["deleted"] is True
+        assert body["cascade"] is True
+        assert body["summary"]["teams_deleted"] == 1
+        assert body["summary"]["team_roles_deleted"] == 1
+        assert body["summary"]["team_members_deleted"] == 1
+
+        ministry_missing = raw(8002, f"/ministries/{ministry['id']}")
+        assert ministry_missing.status_code == 404
+
 
 # ===========================================================================
 # 6. Events service (port 8003)

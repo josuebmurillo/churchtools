@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from sqlalchemy import create_engine, Column, Integer, String, func
@@ -102,6 +102,88 @@ class TeamMember(TeamMemberCreate):
     model_config = ConfigDict(from_attributes=True)
 
 
+def get_ministry_delete_preview(db, ministry_id: int) -> dict:
+    ministry = db.get(MinistryModel, ministry_id)
+    if not ministry:
+        raise HTTPException(status_code=404, detail="Ministry not found")
+
+    team_ids = [team.id for team in db.query(TeamModel).filter_by(ministry_id=ministry_id).all()]
+    role_ids = [role.id for role in db.query(TeamRoleModel).filter_by(ministry_id=ministry_id).all()]
+
+    team_members_count = 0
+    if team_ids:
+        team_members_count = db.query(TeamMemberModel).filter(TeamMemberModel.team_id.in_(team_ids)).count()
+
+    members_with_roles_count = 0
+    if role_ids:
+        members_with_roles_count = db.query(TeamMemberModel).filter(TeamMemberModel.role_id.in_(role_ids)).count()
+
+    child_ministries_count = db.query(MinistryModel).filter(MinistryModel.parent_id == ministry_id).count()
+
+    return {
+        "ministry_id": ministry_id,
+        "ministry_name": ministry.name,
+        "teams": len(team_ids),
+        "team_roles": len(role_ids),
+        "team_members": team_members_count,
+        "members_with_role_links": members_with_roles_count,
+        "child_ministries": child_ministries_count,
+        "requires_cascade": bool(team_ids or role_ids or team_members_count or members_with_roles_count or child_ministries_count),
+    }
+
+
+def delete_ministry_cascade(db, ministry: MinistryModel, preview: dict) -> dict:
+    ministry_id = ministry.id
+
+    teams = db.query(TeamModel).filter_by(ministry_id=ministry_id).all()
+    roles = db.query(TeamRoleModel).filter_by(ministry_id=ministry_id).all()
+    team_ids = [team.id for team in teams]
+    role_ids = [role.id for role in roles]
+
+    members_unassigned = 0
+    if role_ids:
+        members_unassigned = db.query(TeamMemberModel).filter(TeamMemberModel.role_id.in_(role_ids)).count()
+        db.query(TeamMemberModel).filter(TeamMemberModel.role_id.in_(role_ids)).update(
+            {TeamMemberModel.role_id: None},
+            synchronize_session=False,
+        )
+
+    team_members_deleted = 0
+    if team_ids:
+        team_members_deleted = db.query(TeamMemberModel).filter(TeamMemberModel.team_id.in_(team_ids)).count()
+        db.query(TeamMemberModel).filter(TeamMemberModel.team_id.in_(team_ids)).delete(synchronize_session=False)
+
+    roles_deleted = 0
+    if role_ids:
+        roles_deleted = db.query(TeamRoleModel).filter(TeamRoleModel.id.in_(role_ids)).delete(synchronize_session=False)
+
+    teams_deleted = 0
+    if team_ids:
+        teams_deleted = db.query(TeamModel).filter(TeamModel.id.in_(team_ids)).delete(synchronize_session=False)
+
+    child_ministries_detached = db.query(MinistryModel).filter(MinistryModel.parent_id == ministry_id).update(
+        {MinistryModel.parent_id: None},
+        synchronize_session=False,
+    )
+
+    db.delete(ministry)
+    db.commit()
+
+    return {
+        "deleted": True,
+        "id": ministry_id,
+        "cascade": True,
+        "summary": {
+            "teams_deleted": teams_deleted,
+            "team_roles_deleted": roles_deleted,
+            "team_members_deleted": team_members_deleted,
+            "members_unassigned": members_unassigned,
+            "child_ministries_detached": child_ministries_detached,
+        },
+        "preview": preview,
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "ministries"}
@@ -156,17 +238,34 @@ def update_ministry(ministry_id: int, payload: MinistryCreate):
 
 
 @app.delete("/ministries/{ministry_id}")
-def delete_ministry(ministry_id: int):
+def delete_ministry(ministry_id: int, cascade: bool = Query(default=False)):
     with SessionLocal() as db:
         ministry = db.get(MinistryModel, ministry_id)
         if not ministry:
             raise HTTPException(status_code=404, detail="Ministry not found")
-        team = db.query(TeamModel).filter_by(ministry_id=ministry_id).first()
-        if team:
-            raise HTTPException(status_code=400, detail="Ministry has teams")
+
+        preview = get_ministry_delete_preview(db, ministry_id)
+        if preview["requires_cascade"] and not cascade:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Ministry has related records",
+                    "preview": preview,
+                },
+            )
+
+        if cascade:
+            return delete_ministry_cascade(db, ministry, preview)
+
         db.delete(ministry)
         db.commit()
-        return {"deleted": True, "id": ministry_id}
+        return {"deleted": True, "id": ministry_id, "cascade": False}
+
+
+@app.get("/ministries/{ministry_id}/delete-preview")
+def ministry_delete_preview(ministry_id: int):
+    with SessionLocal() as db:
+        return get_ministry_delete_preview(db, ministry_id)
 
 
 @app.get("/teams")

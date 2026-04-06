@@ -18,7 +18,7 @@ type MinistriesPanelProps = {
   handleStartEditMinistry: (ministry: Ministry) => void
   handleSaveMinistryName: (ministry: Ministry) => void
   handleCancelEditMinistry: () => void
-  handleDeleteMinistry: (ministryId: number) => void
+  handleDeleteMinistry: (ministry: Ministry) => void
   ministryForm: { name: string; description: string; parent_id: string }
   setMinistryForm: (value: { name: string; description: string; parent_id: string }) => void
   teamForm: { name: string; ministry_id: string; description: string }
@@ -148,7 +148,7 @@ const MinistriesPanel = ({
                         <button
                           className="action-button danger"
                           type="button"
-                          onClick={() => handleDeleteMinistry(ministry.id)}
+                          onClick={() => handleDeleteMinistry(ministry)}
                         >
                           Eliminar
                         </button>

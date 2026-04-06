@@ -90,6 +90,42 @@ const isWorshipTimelineType = (value: string | null | undefined) => {
   return normalized === 'alabanza y adoracion' || normalized === 'worship'
 }
 
+type MinistryDeletePreview = {
+  ministry_id: number
+  ministry_name: string
+  teams: number
+  team_roles: number
+  team_members: number
+  members_with_role_links: number
+  child_ministries: number
+  requires_cascade: boolean
+}
+
+type MinistryDeleteResult = {
+  deleted: boolean
+  id: number
+  cascade: boolean
+  summary?: {
+    teams_deleted: number
+    team_roles_deleted: number
+    team_members_deleted: number
+    members_unassigned: number
+    child_ministries_detached: number
+  }
+}
+
+const formatApiError = (err: unknown, fallback: string) => {
+  if (!(err instanceof Error)) return fallback
+  try {
+    const payload = JSON.parse(err.message)
+    if (typeof payload?.detail === 'string') return payload.detail
+    if (typeof payload?.detail?.message === 'string') return payload.detail.message
+  } catch {
+    // ignore parse errors and fall back to raw message
+  }
+  return err.message || fallback
+}
+
 const AdminApp = ({ onLogout }: AdminAppProps) => {
   const [ageReferenceNowMs] = useState(() => Date.now())
   const ministries = useApiData<Ministry[]>(buildUrl('ministries', '/ministries'), [])
@@ -717,21 +753,59 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
     }
   }
 
-  const handleDeleteMinistry = async (ministryId: number) => {
+  const handleDeleteMinistry = async (ministry: Ministry) => {
     setActionStatus(null)
     try {
-      await fetchJson(buildUrl('ministries', `/ministries/${ministryId}`), {
+      const preview = await fetchJson<MinistryDeletePreview>(
+        buildUrl('ministries', `/ministries/${ministry.id}/delete-preview`)
+      )
+
+      const message = preview.requires_cascade
+        ? [
+            `El ministerio "${ministry.name}" tiene datos relacionados.`,
+            '',
+            `Se eliminará:`,
+            `- Equipos: ${preview.teams}`,
+            `- Roles: ${preview.team_roles}`,
+            `- Asignaciones en equipos: ${preview.team_members}`,
+            `- Desasignaciones de rol: ${preview.members_with_role_links}`,
+            `- Ministerios hijos que quedarán sin padre: ${preview.child_ministries}`,
+            '',
+            '¿Deseas continuar con el borrado en cascada?',
+          ].join('\n')
+        : `¿Deseas eliminar el ministerio "${ministry.name}"?`
+
+      if (!window.confirm(message)) {
+        return
+      }
+
+      const deletePath = preview.requires_cascade
+        ? `/ministries/${ministry.id}?cascade=true`
+        : `/ministries/${ministry.id}`
+
+      const result = await fetchJson<MinistryDeleteResult>(buildUrl('ministries', deletePath), {
         method: 'DELETE',
       })
-      if (editingMinistryId === ministryId) {
+
+      if (editingMinistryId === ministry.id) {
         setEditingMinistryId(null)
         setEditingMinistryName('')
         setEditingMinistryParentId('')
       }
       ministries.refresh()
-      setActionStatus('Ministerio eliminado')
+      teams.refresh()
+      teamRoles.refresh()
+      teamMembers.refresh()
+
+      if (result.cascade && result.summary) {
+        setActionStatus(
+          `Ministerio eliminado en cascada. Equipos: ${result.summary.teams_deleted}, roles: ${result.summary.team_roles_deleted}, asignaciones: ${result.summary.team_members_deleted}`
+        )
+      } else {
+        setActionStatus('Ministerio eliminado')
+      }
     } catch (err) {
-      setActionStatus(err instanceof Error ? err.message : 'Error eliminando ministerio')
+      setActionStatus(formatApiError(err, 'Error eliminando ministerio'))
     }
   }
 
