@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { getPlatform, isMobile } from '../utils/platform'
 import { useQuery } from '@tanstack/react-query'
 import { useStemStore } from '../store/stemStore'
 import type { StemState } from '../store/stemStore'
@@ -63,7 +64,7 @@ const STEM_END_TOLERANCE_SECONDS = 0.08
 const WAVEFORM_BINS = 180
 const GUIDE_FETCH_RETRIES = 12
 const FETCH_RETRY_DELAY_MS = 5000
-const STRUCTURE_PROGRESS_POLL_ATTEMPTS = 120
+const STRUCTURE_PROGRESS_POLL_ATTEMPTS = 6
 const MULTITRACK_DELETE_TIMEOUT_MS = 45_000
 const GUIDE_SYNTHETIC_STEM_OFFSET = 100_000
 
@@ -103,7 +104,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     stem_name?: string;
     url: string;
     media_url?: string;
-    format?: string;
+    format: string;
     [key: string]: any;
   };
 
@@ -125,6 +126,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
           muted: false,
           solo: false,
           loaded: false,
+          format: typeof stem.format === 'string' ? stem.format : '',
         }))
       );
     }
@@ -135,18 +137,30 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   const wavesurferRefs = useRef<Record<string, WaveSurfer>>({});
 
   useEffect(() => {
+    const platform = getPlatform();
+    const isMobileDevice = isMobile();
     stems.forEach((stem: typeof stems[number]) => {
       if (!wavesurferRefs.current[stem.id] && stem.url) {
         const container = document.getElementById(`waveform-${stem.id}`);
         if (container) {
-          wavesurferRefs.current[stem.id] = WaveSurfer.create({
+          // Ajustar opciones según plataforma
+          let wsOptions: any = {
             container,
             waveColor: '#a0aec0',
             progressColor: '#3182ce',
             cursorColor: '#2d3748',
-            height: 60,
+            height: isMobileDevice ? 40 : 60,
             url: stem.url,
-          });
+          };
+          // Usar solo la variable format
+          const format = typeof stem.format === 'string' ? stem.format : '';
+          if (platform === 'ios' && format === 'm4a') {
+            wsOptions.url = stem.url.replace(/\.(mp3|wav)$/i, '.m4a');
+          } else if (platform === 'android' && format === 'mp3') {
+            wsOptions.url = stem.url.replace(/\.(m4a|wav)$/i, '.mp3');
+          }
+          // PC: sin cambios, pero podrías aumentar calidad si lo deseas
+          wavesurferRefs.current[stem.id] = WaveSurfer.create(wsOptions);
         }
       }
     });
@@ -218,6 +232,10 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   const stemMediaSourceRefs = useRef<Record<number, MediaElementAudioSourceNode>>({})
   const stemGainRefs = useRef<Record<number, GainNode>>({})
   const stemAnalyserRefs = useRef<Record<number, AnalyserNode>>({})
+  // (eliminada variable stemAudioBufferRefs, ya no se usa)
+  const activeBufferSourceRefs = useRef<Record<number, AudioBufferSourceNode>>({})
+  const audioContextStartTimeRef = useRef<number | null>(null)
+  const isUsingAudioBufferRef = useRef(false)
   const stemMeterDataRefs = useRef<Record<number, Uint8Array>>({})
   const stemMeterFillRefs = useRef<Record<number, HTMLSpanElement | null>>({})
   const meterAnimationFrameRef = useRef<number | null>(null)
@@ -1046,7 +1064,10 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
 
     const scheduleRetry = () => {
       if (cancelled) return
-      if (retries >= STRUCTURE_PROGRESS_POLL_ATTEMPTS) return
+      if (retries >= STRUCTURE_PROGRESS_POLL_ATTEMPTS) {
+        // No mostrar pop-up, solo dejar de intentar
+        return
+      }
       retryTimeoutId = window.setTimeout(() => {
         void loadStructureMarkers()
       }, FETCH_RETRY_DELAY_MS)
@@ -1429,10 +1450,26 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     return { audio, gainNode, analyserNode }
   }
 
+  // (eliminada función loadStemAudioBuffer, ya no se usa)
+
   const stopCurrentSources = () => {
     Object.values(stemAudioRefs.current).forEach((audio) => {
       audio.pause()
     })
+    // Stop any scheduled AudioBufferSourceNodes
+    try {
+      Object.values(activeBufferSourceRefs.current).forEach((src) => {
+        try {
+          src.stop()
+        } catch {
+          // ignore
+        }
+      })
+    } finally {
+      activeBufferSourceRefs.current = {}
+      isUsingAudioBufferRef.current = false
+      audioContextStartTimeRef.current = null
+    }
   }
 
   const clearRebufferPoll = () => {
@@ -1494,6 +1531,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   }
 
   const alignPlayingStems = (referenceTime: number) => {
+    if (isUsingAudioBufferRef.current) return
     currentSongStems.forEach((stem) => {
       const audio = stemAudioRefs.current[Number(stem.id)]
       if (!audio) return
@@ -1517,6 +1555,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   }
 
   const triggerRebuffer = (resumePosition: number) => {
+    if (isUsingAudioBufferRef.current) return
     if (rebufferLockRef.current) return
     rebufferLockRef.current = true
     lowBufferStreakRef.current = 0
@@ -1574,6 +1613,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   // Ref para guardar el valor visual previo de cada vumetro
   const stemMeterVisualRef = useRef<Record<number, number>>({})
 
+  // Interpolación lineal
   const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
   const updateMeters = () => {
@@ -1581,7 +1621,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
       const analyser = stemAnalyserRefs.current[Number(stem.id)]
       const fill = stemMeterFillRefs.current[Number(stem.id)]
       if (!analyser) {
-        if (fill) fill.style.height = '4%'
+        if (fill && fill.style.height !== '4%') fill.style.height = '4%'
         stemMeterVisualRef.current[Number(stem.id)] = 0.04
         return
       }
@@ -1611,23 +1651,28 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
 
       // Interpolación visual (lerp)
       const prev = stemMeterVisualRef.current[Number(stem.id)] ?? 0.04
-      // t controla la suavidad: 0.18 = muy suave, 0.3 = más responsivo
-      const t = 0.18
+      // t controla la suavidad: 0.32 = más responsivo, menos lag
+      const t = 0.32
       let next = lerp(prev, meterLevel, t)
       // Limitar velocidad de descenso (decay)
-      const maxDecayPerFrame = 0.025 // Máximo que puede bajar por frame (~2.5% barra)
+      const maxDecayPerFrame = 0.035 // Más rápido el decay
       if (next < prev) {
         next = Math.max(next, prev - maxDecayPerFrame)
       }
-      stemMeterVisualRef.current[Number(stem.id)] = next
-      if (fill) {
+      // Solo actualizar el DOM si el valor cambió perceptiblemente
+      if (Math.abs(next - prev) > 0.005 && fill) {
         fill.style.height = `${Math.max(4, next * 100)}%`
       }
+      stemMeterVisualRef.current[Number(stem.id)] = next
     })
     meterAnimationFrameRef.current = window.requestAnimationFrame(updateMeters)
   }
 
   const getCurrentPlaybackPosition = () => {
+    if (isUsingAudioBufferRef.current && audioContextRef.current && audioContextStartTimeRef.current != null) {
+      return (audioContextRef.current.currentTime - audioContextStartTimeRef.current) + mixerPosition
+    }
+
     const referenceAudio = getReferenceAudio()
     if (!referenceAudio) return mixerPosition
     return referenceAudio.currentTime
@@ -1636,9 +1681,37 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
   useEffect(() => {
     return () => {
       stopMeterLoop()
+      // Limpieza reforzada: detener todos los nodos previos antes de crear nuevos
+      // Detener y limpiar SOLO los nodos activos por stem, y bloquear llamadas paralelas
+      const win = window as Window & { __musicAppPlaybackLock?: boolean };
+      win.__musicAppPlaybackLock = win.__musicAppPlaybackLock || false;
+      if (win.__musicAppPlaybackLock) {
+        if (window.console) window.console.warn('Playback already in progress, skipping duplicate start');
+        return;
+      }
+      win.__musicAppPlaybackLock = true;
+      Object.entries(activeBufferSourceRefs.current).forEach(([id, src]) => {
+        try {
+          src.stop();
+          if (window) window.console && window.console.log && window.console.log('Stopped buffer source for stem', id);
+        } catch (e) {
+          if (window) window.console && window.console.warn && window.console.warn('Error stopping buffer source', id, e);
+        }
+      });
+      activeBufferSourceRefs.current = {};
+      isUsingAudioBufferRef.current = false;
+      audioContextStartTimeRef.current = null;
+      // Espera breve para liberar recursos
+      setTimeout(() => {
+        win.__musicAppPlaybackLock = false;
+      }, 60);
       Object.values(stemAudioRefs.current).forEach((audio) => {
-        audio.pause()
-        audio.src = ''
+        try {
+          audio.pause()
+          audio.src = ''
+        } catch {
+          // ignore
+        }
       })
       stemAudioRefs.current = {}
       stemMediaSourceRefs.current = {}
@@ -1712,6 +1785,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     if (!mixerPlaying) return
 
     const intervalId = window.setInterval(() => {
+      if (isUsingAudioBufferRef.current) return // No late join cuando se usa AudioBufferSourceNode
       const referenceTime = getCurrentPlaybackPosition()
       const elapsedSinceStart = Date.now() - playStartedAtRef.current
       let pendingCount = 0
@@ -1896,6 +1970,7 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
         return
       }
 
+      // Restaurar reproducción clásica con HTMLAudioElement
       const audiosToPlay: HTMLAudioElement[] = []
       for (const stem of currentSongStems) {
         const { audio, gainNode } = await ensureStemAudioChain(stem, true)

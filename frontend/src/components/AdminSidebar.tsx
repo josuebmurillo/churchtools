@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 type Section =
   | 'resumen'
+  | 'usuarios'
   | 'ministerios'
   | 'voluntarios'
   | 'seguimiento'
@@ -54,6 +55,7 @@ const AdminSidebar = ({ activeSection, setActiveSection, onLogout }: AdminSideba
         <nav className="section-tabs">
           {[
             { key: 'resumen', label: 'Resumen' },
+            { key: 'usuarios', label: 'Usuarios' },
             { key: 'ministerios', label: 'Ministerios' },
             { key: 'voluntarios', label: 'Voluntarios' },
             { key: 'seguimiento', label: 'Seguimiento' },

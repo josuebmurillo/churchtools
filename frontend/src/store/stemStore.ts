@@ -8,6 +8,7 @@ export type StemState = {
     muted: boolean;
     solo: boolean;
     loaded: boolean;
+    format: string;
   }>;
   setStems: (stems: StemState['stems']) => void;
   updateStem: (id: string, data: Partial<StemState['stems'][0]>) => void;

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { buildUrl, setAuthToken, clearAuthToken } from '../services/api'
 
 type AppVariant = 'admin' | 'music' | 'volunteers'
 
@@ -30,7 +31,7 @@ const LoginPage = ({ onLogin, initialVariant }: LoginPageProps) => {
   const [error, setError] = useState<string | null>(null)
   const [variant, setVariant] = useState<AppVariant>(initialVariant)
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     if (mode === 'signup' && !name.trim()) {
       setError('Ingresa tu nombre')
@@ -41,8 +42,49 @@ const LoginPage = ({ onLogin, initialVariant }: LoginPageProps) => {
       return
     }
     setError(null)
-    localStorage.setItem('auth', 'true')
-    onLogin(variant)
+    try {
+      if (mode === 'login') {
+        // Login real
+        const res = await fetch(buildUrl('security', '/auth/login'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: email, email, password }),
+        })
+        if (!res.ok) {
+          const detail = await res.text()
+          throw new Error(detail || 'Credenciales incorrectas')
+        }
+        const data = await res.json()
+        setAuthToken(data.access_token)
+        onLogin(variant)
+      } else {
+        // Registro
+        const res = await fetch(buildUrl('security', '/auth/register'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: email, email, password, person_id: null, active: true, name }),
+        })
+        if (!res.ok) {
+          const detail = await res.text()
+          throw new Error(detail || 'No se pudo registrar')
+        }
+        // Registro exitoso, intentar login automático
+        const loginRes = await fetch(buildUrl('security', '/auth/login'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: email, email, password }),
+        })
+        if (!loginRes.ok) {
+          throw new Error('Usuario creado, pero error al iniciar sesión')
+        }
+        const loginData = await loginRes.json()
+        setAuthToken(loginData.access_token)
+        onLogin(variant)
+      }
+    } catch (err: any) {
+      clearAuthToken()
+      setError(err.message || 'Error de autenticación')
+    }
   }
 
   return (

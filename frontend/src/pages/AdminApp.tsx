@@ -13,6 +13,7 @@ import {
 } from 'chart.js'
 import AdminHeader from '../components/AdminHeader'
 import AdminSidebar from '../components/AdminSidebar'
+import AdminUsersPanel from '../components/AdminUsersPanel'
 import CalendarPanel from '../components/CalendarPanel'
 import ConsejeriaPanel from '../components/ConsejeriaPanel'
 import DashboardSummary from '../components/DashboardSummary'
@@ -166,6 +167,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
   })
   const [activeSection, setActiveSection] = useState<
     | 'resumen'
+    | 'usuarios'
     | 'ministerios'
     | 'voluntarios'
     | 'seguimiento'
@@ -1057,6 +1059,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
             onNavigate={(section) => setActiveSection(section)}
           />
         )}
+        {activeSection === 'usuarios' && <AdminUsersPanel />}
 
         {actionStatus && <div className="notice">{actionStatus}</div>}
 
