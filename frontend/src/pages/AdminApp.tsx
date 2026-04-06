@@ -183,6 +183,9 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
   const [editingMinistryId, setEditingMinistryId] = useState<number | null>(null)
   const [editingMinistryName, setEditingMinistryName] = useState('')
   const [editingMinistryParentId, setEditingMinistryParentId] = useState('')
+  const [ministryDeleteTarget, setMinistryDeleteTarget] = useState<Ministry | null>(null)
+  const [ministryDeletePreview, setMinistryDeletePreview] = useState<MinistryDeletePreview | null>(null)
+  const [isDeletingMinistry, setIsDeletingMinistry] = useState(false)
   const [teamFilterMinistryId, setTeamFilterMinistryId] = useState('')
   const [activeMapMinistryId, setActiveMapMinistryId] = useState<number | null>(null)
   const [trackingSearch, setTrackingSearch] = useState('')
@@ -760,38 +763,40 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
         buildUrl('ministries', `/ministries/${ministry.id}/delete-preview`)
       )
 
-      const message = preview.requires_cascade
-        ? [
-            `El ministerio "${ministry.name}" tiene datos relacionados.`,
-            '',
-            `Se eliminará:`,
-            `- Equipos: ${preview.teams}`,
-            `- Roles: ${preview.team_roles}`,
-            `- Asignaciones en equipos: ${preview.team_members}`,
-            `- Desasignaciones de rol: ${preview.members_with_role_links}`,
-            `- Ministerios hijos que quedarán sin padre: ${preview.child_ministries}`,
-            '',
-            '¿Deseas continuar con el borrado en cascada?',
-          ].join('\n')
-        : `¿Deseas eliminar el ministerio "${ministry.name}"?`
+      setMinistryDeleteTarget(ministry)
+      setMinistryDeletePreview(preview)
+    } catch (err) {
+      setActionStatus(formatApiError(err, 'Error preparando eliminación del ministerio'))
+    }
+  }
 
-      if (!window.confirm(message)) {
-        return
-      }
+  const closeMinistryDeleteModal = () => {
+    if (isDeletingMinistry) return
+    setMinistryDeleteTarget(null)
+    setMinistryDeletePreview(null)
+  }
 
-      const deletePath = preview.requires_cascade
-        ? `/ministries/${ministry.id}?cascade=true`
-        : `/ministries/${ministry.id}`
+  const confirmDeleteMinistry = async () => {
+    if (!ministryDeleteTarget || !ministryDeletePreview) return
+    setActionStatus(null)
+    setIsDeletingMinistry(true)
+    try {
+      const deletePath = ministryDeletePreview.requires_cascade
+        ? `/ministries/${ministryDeleteTarget.id}?cascade=true`
+        : `/ministries/${ministryDeleteTarget.id}`
 
       const result = await fetchJson<MinistryDeleteResult>(buildUrl('ministries', deletePath), {
         method: 'DELETE',
       })
 
-      if (editingMinistryId === ministry.id) {
+      if (editingMinistryId === ministryDeleteTarget.id) {
         setEditingMinistryId(null)
         setEditingMinistryName('')
         setEditingMinistryParentId('')
       }
+
+      setMinistryDeleteTarget(null)
+      setMinistryDeletePreview(null)
       ministries.refresh()
       teams.refresh()
       teamRoles.refresh()
@@ -806,6 +811,8 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
       }
     } catch (err) {
       setActionStatus(formatApiError(err, 'Error eliminando ministerio'))
+    } finally {
+      setIsDeletingMinistry(false)
     }
   }
 
@@ -1175,6 +1182,38 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
             handleCreateTeam={handleCreateTeam}
             handleCreateMinistryRole={handleCreateMinistryRole}
           />
+        )}
+
+        {ministryDeleteTarget && ministryDeletePreview && (
+          <div className="modal-backdrop" onClick={closeMinistryDeleteModal}>
+            <div className="modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Eliminar ministerio</h3>
+                <button className="action-button ghost" type="button" onClick={closeMinistryDeleteModal} disabled={isDeletingMinistry}>✕</button>
+              </div>
+              <p style={{ margin: '8px 0 14px' }}>
+                Se eliminará <strong>{ministryDeleteTarget.name}</strong>
+                {ministryDeletePreview.requires_cascade ? ' con borrado en cascada:' : '.'}
+              </p>
+              {ministryDeletePreview.requires_cascade && (
+                <ul style={{ margin: '0 0 16px 18px', padding: 0, display: 'grid', gap: 6 }}>
+                  <li>Equipos: {ministryDeletePreview.teams}</li>
+                  <li>Roles: {ministryDeletePreview.team_roles}</li>
+                  <li>Asignaciones de equipos: {ministryDeletePreview.team_members}</li>
+                  <li>Desasignaciones de rol: {ministryDeletePreview.members_with_role_links}</li>
+                  <li>Ministerios hijos sin padre: {ministryDeletePreview.child_ministries}</li>
+                </ul>
+              )}
+              <div className="row-actions">
+                <button className="action-button ghost" type="button" onClick={closeMinistryDeleteModal} disabled={isDeletingMinistry}>
+                  Cancelar
+                </button>
+                <button className="action-button danger" type="button" onClick={confirmDeleteMinistry} disabled={isDeletingMinistry}>
+                  {isDeletingMinistry ? 'Eliminando…' : 'Confirmar eliminación'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {allowedSections.includes('voluntarios') && activeSection === 'voluntarios' && (
