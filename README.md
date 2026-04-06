@@ -185,7 +185,18 @@ El gateway enruta por prefijo:
 ### Permisos de gateway
 El gateway aplica control de acceso por permisos de módulo.
 
-Consulta la matriz completa en `docs/permisos-gateway.md`.
+```mermaid
+flowchart LR
+	A[Request al Gateway] --> B{Ruta protegida?}
+	B -- No --> Z[Forward]
+	B -- Si --> C{Token valido?}
+	C -- No --> E[401]
+	C -- Si --> D{Permiso requerido presente?}
+	D -- No --> F[403]
+	D -- Si --> Z
+```
+
+Consulta la matriz completa en `docs/permisos-gateway.md` para el detalle permiso -> endpoint.
 
 > Nota: En desarrollo, las tablas todavía pueden crearse al iniciar el servicio, pero se recomienda usar Alembic para mantener el esquema versionado.
 
