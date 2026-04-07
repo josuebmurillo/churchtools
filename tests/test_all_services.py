@@ -799,6 +799,60 @@ class TestReports:
         resp = raw(8010, "/reports/participation")
         assert resp.status_code == 200
 
+    def test_reports_can_be_associated_with_event(self):
+        event_resp = raw(
+            8003,
+            "/events",
+            method="POST",
+            json={"name": f"Report Event {uuid4().hex[:8]}", "date": "2027-02-01T10:00:00"},
+        )
+        assert event_resp.status_code == 200, event_resp.text
+        event_id = event_resp.json()["id"]
+
+        attendance_resp = raw(
+            8010,
+            "/reports/attendance/history",
+            method="POST",
+            json={
+                "fecha": "2027-02-01",
+                "event_id": event_id,
+                "total_asistencia": 150,
+                "total_visitantes": 18,
+            },
+        )
+        assert attendance_resp.status_code == 200, attendance_resp.text
+        assert attendance_resp.json()["event_id"] == event_id
+
+        participation_resp = raw(
+            8010,
+            "/reports/participation/history",
+            method="POST",
+            json={
+                "fecha": "2027-02-01",
+                "event_id": event_id,
+                "total_activos": 150,
+                "total_voluntarios": 24,
+            },
+        )
+        assert participation_resp.status_code == 200, participation_resp.text
+        assert participation_resp.json()["event_id"] == event_id
+
+        attendance_latest = raw(8010, "/reports/attendance")
+        assert attendance_latest.status_code == 200
+        assert attendance_latest.json()["event_id"] == event_id
+
+        participation_latest = raw(8010, "/reports/participation")
+        assert participation_latest.status_code == 200
+        assert participation_latest.json()["event_id"] == event_id
+
+        attendance_history = raw(8010, "/reports/attendance/history")
+        assert attendance_history.status_code == 200
+        assert any(item.get("event_id") == event_id for item in attendance_history.json())
+
+        participation_history = raw(8010, "/reports/participation/history")
+        assert participation_history.status_code == 200
+        assert any(item.get("event_id") == event_id for item in participation_history.json())
+
 
 # ===========================================================================
 # 14. PDFs service (port 8011)
