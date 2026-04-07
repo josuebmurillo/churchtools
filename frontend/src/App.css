@@ -607,12 +607,21 @@ nav button:hover {
   min-width: max(640px, 100%);
 }
 
+.volunteer-roles-table .module-table__inner {
+  min-width: min(640px, 100%);
+}
+
 .table-header,
 .table-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 12px;
   align-items: center;
+}
+
+.volunteer-roles-table .table-header,
+.volunteer-roles-table .table-row {
+  grid-template-columns: minmax(140px, 1.1fr) minmax(140px, 1fr) minmax(90px, 0.7fr) auto;
 }
 
 .ministry-table .table-header,
@@ -1092,6 +1101,32 @@ nav button:hover {
   border-radius: 12px;
   padding: 10px 12px;
   color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .volunteer-roles-table .module-table__inner {
+    min-width: 100%;
+  }
+
+  .volunteer-roles-table .table-header,
+  .volunteer-roles-table .table-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .volunteer-roles-table .table-header span:nth-child(3),
+  .volunteer-roles-table .table-row span:nth-child(3),
+  .volunteer-roles-table .table-header span:nth-child(4) {
+    display: none;
+  }
+
+  .volunteer-roles-table .table-row span:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+
+  .volunteer-roles-table .row-actions {
+    justify-content: flex-start;
+  }
 }
 
 .table-row.loading {

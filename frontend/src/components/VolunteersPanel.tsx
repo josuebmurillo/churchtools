@@ -326,6 +326,7 @@ const VolunteersPanel = ({
         </select>
       </label>
       <GenericTable
+        className="volunteer-roles-table"
         columns={[
           { key: 'name', label: 'Rol' },
           { key: 'ministry', label: 'Ministerio' },
