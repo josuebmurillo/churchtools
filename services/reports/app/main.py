@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -88,6 +88,7 @@ def attendance_history():
         rows = db.query(AttendanceSnapshotModel).order_by(AttendanceSnapshotModel.fecha.asc()).all()
         return [
             {
+                "id": row.id,
                 "fecha": row.fecha,
                 "event_id": row.event_id,
                 "total_asistencia": row.total_asistencia,
@@ -118,6 +119,38 @@ def create_attendance_snapshot(payload: AttendanceSnapshotCreate):
         }
 
 
+@app.put("/reports/attendance/history/{snapshot_id}")
+def update_attendance_snapshot(snapshot_id: int, payload: AttendanceSnapshotCreate):
+    with SessionLocal() as db:
+        snapshot = db.get(AttendanceSnapshotModel, snapshot_id)
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="Attendance snapshot not found")
+        snapshot.fecha = payload.fecha
+        snapshot.event_id = payload.event_id
+        snapshot.total_asistencia = payload.total_asistencia
+        snapshot.total_visitantes = payload.total_visitantes
+        db.commit()
+        db.refresh(snapshot)
+        return {
+            "id": snapshot.id,
+            "fecha": snapshot.fecha,
+            "event_id": snapshot.event_id,
+            "total_asistencia": snapshot.total_asistencia,
+            "total_visitantes": snapshot.total_visitantes,
+        }
+
+
+@app.delete("/reports/attendance/history/{snapshot_id}")
+def delete_attendance_snapshot(snapshot_id: int):
+    with SessionLocal() as db:
+        snapshot = db.get(AttendanceSnapshotModel, snapshot_id)
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="Attendance snapshot not found")
+        db.delete(snapshot)
+        db.commit()
+        return {"deleted": True, "id": snapshot_id}
+
+
 @app.get("/reports/participation")
 def participation_report():
     with SessionLocal() as db:
@@ -137,6 +170,7 @@ def participation_history():
         rows = db.query(ParticipationSnapshotModel).order_by(ParticipationSnapshotModel.fecha.asc()).all()
         return [
             {
+                "id": row.id,
                 "fecha": row.fecha,
                 "event_id": row.event_id,
                 "total_activos": row.total_activos,
@@ -165,3 +199,35 @@ def create_participation_snapshot(payload: ParticipationSnapshotCreate):
             "total_activos": snapshot.total_activos,
             "total_voluntarios": snapshot.total_voluntarios,
         }
+
+
+@app.put("/reports/participation/history/{snapshot_id}")
+def update_participation_snapshot(snapshot_id: int, payload: ParticipationSnapshotCreate):
+    with SessionLocal() as db:
+        snapshot = db.get(ParticipationSnapshotModel, snapshot_id)
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="Participation snapshot not found")
+        snapshot.fecha = payload.fecha
+        snapshot.event_id = payload.event_id
+        snapshot.total_activos = payload.total_activos
+        snapshot.total_voluntarios = payload.total_voluntarios
+        db.commit()
+        db.refresh(snapshot)
+        return {
+            "id": snapshot.id,
+            "fecha": snapshot.fecha,
+            "event_id": snapshot.event_id,
+            "total_activos": snapshot.total_activos,
+            "total_voluntarios": snapshot.total_voluntarios,
+        }
+
+
+@app.delete("/reports/participation/history/{snapshot_id}")
+def delete_participation_snapshot(snapshot_id: int):
+    with SessionLocal() as db:
+        snapshot = db.get(ParticipationSnapshotModel, snapshot_id)
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="Participation snapshot not found")
+        db.delete(snapshot)
+        db.commit()
+        return {"deleted": True, "id": snapshot_id}

@@ -624,6 +624,23 @@ nav button:hover {
   grid-template-columns: minmax(140px, 1.1fr) minmax(140px, 1fr) minmax(90px, 0.7fr) auto;
 }
 
+.admin-users-table .table-header,
+.admin-users-table .table-row {
+  grid-template-columns: minmax(120px, 1fr) minmax(180px, 1.1fr) minmax(160px, 1.1fr) minmax(90px, 0.7fr) auto;
+}
+
+.tracking-members-table .table-header,
+.tracking-members-table .table-row {
+  grid-template-columns: minmax(160px, 1.2fr) minmax(140px, 1fr) minmax(130px, 1fr) minmax(130px, 1fr) auto;
+}
+
+.metrics-attendance-table .table-header,
+.metrics-attendance-table .table-row,
+.metrics-participation-table .table-header,
+.metrics-participation-table .table-row {
+  grid-template-columns: minmax(110px, 0.9fr) minmax(160px, 1.1fr) minmax(110px, 0.9fr) minmax(110px, 0.9fr) auto;
+}
+
 .ministry-table .table-header,
 .ministry-table .table-row {
   grid-template-columns: minmax(200px, 1.4fr) minmax(200px, 1.2fr) minmax(180px, 1fr) auto;
@@ -1108,6 +1125,13 @@ nav button:hover {
     min-width: 100%;
   }
 
+  .admin-users-table .module-table__inner,
+  .tracking-members-table .module-table__inner,
+  .metrics-attendance-table .module-table__inner,
+  .metrics-participation-table .module-table__inner {
+    min-width: 100%;
+  }
+
   .volunteer-roles-table .table-header,
   .volunteer-roles-table .table-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1125,6 +1149,54 @@ nav button:hover {
   }
 
   .volunteer-roles-table .row-actions {
+    justify-content: flex-start;
+  }
+
+  .admin-users-table .table-header,
+  .admin-users-table .table-row,
+  .tracking-members-table .table-header,
+  .tracking-members-table .table-row,
+  .metrics-attendance-table .table-header,
+  .metrics-attendance-table .table-row,
+  .metrics-participation-table .table-header,
+  .metrics-participation-table .table-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .admin-users-table .table-header span:nth-child(2),
+  .admin-users-table .table-row span:nth-child(2),
+  .admin-users-table .table-header span:nth-child(4),
+  .admin-users-table .table-row span:nth-child(4),
+  .tracking-members-table .table-header span:nth-child(3),
+  .tracking-members-table .table-row span:nth-child(3),
+  .tracking-members-table .table-header span:nth-child(4),
+  .tracking-members-table .table-row span:nth-child(4),
+  .metrics-attendance-table .table-header span:nth-child(2),
+  .metrics-attendance-table .table-row span:nth-child(2),
+  .metrics-participation-table .table-header span:nth-child(2),
+  .metrics-participation-table .table-row span:nth-child(2) {
+    display: none;
+  }
+
+  .admin-users-table .table-header span:nth-child(5),
+  .tracking-members-table .table-header span:nth-child(5),
+  .metrics-attendance-table .table-header span:nth-child(5),
+  .metrics-participation-table .table-header span:nth-child(5) {
+    display: none;
+  }
+
+  .admin-users-table .table-row span:nth-child(5),
+  .tracking-members-table .table-row span:nth-child(5),
+  .metrics-attendance-table .table-row span:nth-child(5),
+  .metrics-participation-table .table-row span:nth-child(5) {
+    grid-column: 1 / -1;
+  }
+
+  .admin-users-table .row-actions,
+  .tracking-members-table .row-actions,
+  .metrics-attendance-table .row-actions,
+  .metrics-participation-table .row-actions {
     justify-content: flex-start;
   }
 }

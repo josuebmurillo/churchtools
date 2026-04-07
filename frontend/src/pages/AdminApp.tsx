@@ -1170,6 +1170,70 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
     }
   }
 
+  const handleUpdateAttendanceReport = async (id: number, payload: { fecha: string; event_id: number | null; total_asistencia: number; total_visitantes: number }) => {
+    setActionStatus(null)
+    try {
+      await fetchJson(buildUrl('reports', `/reports/attendance/history/${id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      attendance.refresh()
+      attendanceHistory.refresh()
+      setActionStatus('Reporte de asistencia actualizado')
+    } catch (err) {
+      setActionStatus(err instanceof Error ? err.message : 'Error actualizando reporte de asistencia')
+      throw err
+    }
+  }
+
+  const handleDeleteAttendanceReport = async (id: number) => {
+    setActionStatus(null)
+    try {
+      await fetchJson(buildUrl('reports', `/reports/attendance/history/${id}`), {
+        method: 'DELETE',
+      })
+      attendance.refresh()
+      attendanceHistory.refresh()
+      setActionStatus('Reporte de asistencia eliminado')
+    } catch (err) {
+      setActionStatus(err instanceof Error ? err.message : 'Error eliminando reporte de asistencia')
+      throw err
+    }
+  }
+
+  const handleUpdateParticipationReport = async (id: number, payload: { fecha: string; event_id: number | null; total_activos: number; total_voluntarios: number }) => {
+    setActionStatus(null)
+    try {
+      await fetchJson(buildUrl('reports', `/reports/participation/history/${id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      participation.refresh()
+      participationHistory.refresh()
+      setActionStatus('Reporte de participación actualizado')
+    } catch (err) {
+      setActionStatus(err instanceof Error ? err.message : 'Error actualizando reporte de participación')
+      throw err
+    }
+  }
+
+  const handleDeleteParticipationReport = async (id: number) => {
+    setActionStatus(null)
+    try {
+      await fetchJson(buildUrl('reports', `/reports/participation/history/${id}`), {
+        method: 'DELETE',
+      })
+      participation.refresh()
+      participationHistory.refresh()
+      setActionStatus('Reporte de participación eliminado')
+    } catch (err) {
+      setActionStatus(err instanceof Error ? err.message : 'Error eliminando reporte de participación')
+      throw err
+    }
+  }
+
   return (
     <div className="app">
       <AdminSidebar activeSection={activeSection} visibleSections={allowedSections} setActiveSection={handleSectionChange} onLogout={onLogout} />
@@ -1405,6 +1469,10 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
             participationTotals={participation.data}
             onCreateAttendanceReport={handleCreateAttendanceReport}
             onCreateParticipationReport={handleCreateParticipationReport}
+            onUpdateAttendanceReport={handleUpdateAttendanceReport}
+            onDeleteAttendanceReport={handleDeleteAttendanceReport}
+            onUpdateParticipationReport={handleUpdateParticipationReport}
+            onDeleteParticipationReport={handleDeleteParticipationReport}
           />
         )}
 

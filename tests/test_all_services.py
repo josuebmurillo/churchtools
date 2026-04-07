@@ -822,6 +822,7 @@ class TestReports:
         )
         assert attendance_resp.status_code == 200, attendance_resp.text
         assert attendance_resp.json()["event_id"] == event_id
+        attendance_snapshot_id = attendance_resp.json()["id"]
 
         participation_resp = raw(
             8010,
@@ -836,6 +837,35 @@ class TestReports:
         )
         assert participation_resp.status_code == 200, participation_resp.text
         assert participation_resp.json()["event_id"] == event_id
+        participation_snapshot_id = participation_resp.json()["id"]
+
+        attendance_update = raw(
+            8010,
+            f"/reports/attendance/history/{attendance_snapshot_id}",
+            method="PUT",
+            json={
+                "fecha": "2027-02-02",
+                "event_id": event_id,
+                "total_asistencia": 160,
+                "total_visitantes": 20,
+            },
+        )
+        assert attendance_update.status_code == 200, attendance_update.text
+        assert attendance_update.json()["total_asistencia"] == 160
+
+        participation_update = raw(
+            8010,
+            f"/reports/participation/history/{participation_snapshot_id}",
+            method="PUT",
+            json={
+                "fecha": "2027-02-02",
+                "event_id": event_id,
+                "total_activos": 160,
+                "total_voluntarios": 26,
+            },
+        )
+        assert participation_update.status_code == 200, participation_update.text
+        assert participation_update.json()["total_voluntarios"] == 26
 
         attendance_latest = raw(8010, "/reports/attendance")
         assert attendance_latest.status_code == 200
@@ -852,6 +882,12 @@ class TestReports:
         participation_history = raw(8010, "/reports/participation/history")
         assert participation_history.status_code == 200
         assert any(item.get("event_id") == event_id for item in participation_history.json())
+
+        delete_attendance = raw(8010, f"/reports/attendance/history/{attendance_snapshot_id}", method="DELETE")
+        assert delete_attendance.status_code == 200
+
+        delete_participation = raw(8010, f"/reports/participation/history/{participation_snapshot_id}", method="DELETE")
+        assert delete_participation.status_code == 200
 
 
 # ===========================================================================

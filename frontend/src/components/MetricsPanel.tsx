@@ -39,6 +39,10 @@ type MetricsPanelProps = {
   }
   onCreateAttendanceReport: (payload: { fecha: string; event_id: number | null; total_asistencia: number; total_visitantes: number }) => Promise<void>
   onCreateParticipationReport: (payload: { fecha: string; event_id: number | null; total_activos: number; total_voluntarios: number }) => Promise<void>
+  onUpdateAttendanceReport: (id: number, payload: { fecha: string; event_id: number | null; total_asistencia: number; total_visitantes: number }) => Promise<void>
+  onDeleteAttendanceReport: (id: number) => Promise<void>
+  onUpdateParticipationReport: (id: number, payload: { fecha: string; event_id: number | null; total_activos: number; total_voluntarios: number }) => Promise<void>
+  onDeleteParticipationReport: (id: number) => Promise<void>
 }
 
 const MetricsPanel = ({
@@ -61,6 +65,10 @@ const MetricsPanel = ({
   participationTotals,
   onCreateAttendanceReport,
   onCreateParticipationReport,
+  onUpdateAttendanceReport,
+  onDeleteAttendanceReport,
+  onUpdateParticipationReport,
+  onDeleteParticipationReport,
 }: MetricsPanelProps) => {
   const [isLargeScreen, setIsLargeScreen] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false
@@ -69,6 +77,8 @@ const MetricsPanel = ({
   const [participationForm, setParticipationForm] = useState({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_activos: '', total_voluntarios: '' })
   const [attendanceSubmitting, setAttendanceSubmitting] = useState(false)
   const [participationSubmitting, setParticipationSubmitting] = useState(false)
+  const [editingAttendanceId, setEditingAttendanceId] = useState<number | null>(null)
+  const [editingParticipationId, setEditingParticipationId] = useState<number | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -87,12 +97,18 @@ const MetricsPanel = ({
     event.preventDefault()
     setAttendanceSubmitting(true)
     try {
-      await onCreateAttendanceReport({
+      const payload = {
         fecha: attendanceForm.fecha,
         event_id: attendanceForm.event_id ? Number(attendanceForm.event_id) : null,
         total_asistencia: Number(attendanceForm.total_asistencia || 0),
         total_visitantes: Number(attendanceForm.total_visitantes || 0),
-      })
+      }
+      if (editingAttendanceId) {
+        await onUpdateAttendanceReport(editingAttendanceId, payload)
+      } else {
+        await onCreateAttendanceReport(payload)
+      }
+      setEditingAttendanceId(null)
       setAttendanceForm({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_asistencia: '', total_visitantes: '' })
     } finally {
       setAttendanceSubmitting(false)
@@ -103,12 +119,18 @@ const MetricsPanel = ({
     event.preventDefault()
     setParticipationSubmitting(true)
     try {
-      await onCreateParticipationReport({
+      const payload = {
         fecha: participationForm.fecha,
         event_id: participationForm.event_id ? Number(participationForm.event_id) : null,
         total_activos: Number(participationForm.total_activos || 0),
         total_voluntarios: Number(participationForm.total_voluntarios || 0),
-      })
+      }
+      if (editingParticipationId) {
+        await onUpdateParticipationReport(editingParticipationId, payload)
+      } else {
+        await onCreateParticipationReport(payload)
+      }
+      setEditingParticipationId(null)
       setParticipationForm({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_activos: '', total_voluntarios: '' })
     } finally {
       setParticipationSubmitting(false)
@@ -141,7 +163,17 @@ const MetricsPanel = ({
             Visitantes
             <input className="input" type="number" min="0" value={attendanceForm.total_visitantes} onChange={(event) => setAttendanceForm({ ...attendanceForm, total_visitantes: event.target.value })} required />
           </label>
-          <button className="primary" type="submit" disabled={attendanceSubmitting}>{attendanceSubmitting ? 'Guardando…' : 'Guardar asistencia'}</button>
+          <div className="row-actions">
+            <button className="primary" type="submit" disabled={attendanceSubmitting}>{attendanceSubmitting ? 'Guardando…' : editingAttendanceId ? 'Actualizar asistencia' : 'Guardar asistencia'}</button>
+            {editingAttendanceId && (
+              <button className="action-button ghost" type="button" onClick={() => {
+                setEditingAttendanceId(null)
+                setAttendanceForm({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_asistencia: '', total_visitantes: '' })
+              }}>
+                Cancelar edición
+              </button>
+            )}
+          </div>
         </form>
 
         <form className="form" onSubmit={handleParticipationSubmit}>
@@ -166,7 +198,17 @@ const MetricsPanel = ({
             Servidores
             <input className="input" type="number" min="0" value={participationForm.total_voluntarios} onChange={(event) => setParticipationForm({ ...participationForm, total_voluntarios: event.target.value })} required />
           </label>
-          <button className="primary" type="submit" disabled={participationSubmitting}>{participationSubmitting ? 'Guardando…' : 'Guardar participación'}</button>
+          <div className="row-actions">
+            <button className="primary" type="submit" disabled={participationSubmitting}>{participationSubmitting ? 'Guardando…' : editingParticipationId ? 'Actualizar participación' : 'Guardar participación'}</button>
+            {editingParticipationId && (
+              <button className="action-button ghost" type="button" onClick={() => {
+                setEditingParticipationId(null)
+                setParticipationForm({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_activos: '', total_voluntarios: '' })
+              }}>
+                Cancelar edición
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </Panel>
@@ -300,11 +342,48 @@ const MetricsPanel = ({
 
     <Panel title="Asistencia registrada" subtitle="Asistencia y visitantes por fecha y evento.">
       <GenericTable
+        className="metrics-attendance-table"
         columns={[
           { key: 'fecha', label: 'Fecha' },
           { key: 'event_name', label: 'Evento', render: (value) => value || 'Sin evento' },
           { key: 'total_asistencia', label: 'Asistencia' },
           { key: 'total_visitantes', label: 'Visitantes' },
+          {
+            key: 'id',
+            label: 'Acciones',
+            render: (_, row) => (
+              <div className="row-actions">
+                <button
+                  className="action-button ghost"
+                  type="button"
+                  onClick={() => {
+                    setEditingAttendanceId(row.id)
+                    setAttendanceForm({
+                      fecha: row.fecha,
+                      event_id: row.event_id ? String(row.event_id) : '',
+                      total_asistencia: String(row.total_asistencia),
+                      total_visitantes: String(row.total_visitantes),
+                    })
+                  }}
+                >
+                  Editar
+                </button>
+                <button
+                  className="action-button danger"
+                  type="button"
+                  onClick={async () => {
+                    if (!window.confirm('¿Eliminar este reporte de asistencia?')) return
+                    await onDeleteAttendanceReport(row.id)
+                    if (editingAttendanceId === row.id) {
+                      setEditingAttendanceId(null)
+                    }
+                  }}
+                >
+                  Eliminar
+                </button>
+              </div>
+            ),
+          },
         ]}
         rows={attendanceHistory.data}
         loading={attendanceHistory.loading}
@@ -325,11 +404,48 @@ const MetricsPanel = ({
         )}
       </div>
       <GenericTable
+        className="metrics-participation-table"
         columns={[
           { key: 'fecha', label: 'Fecha' },
           { key: 'event_name', label: 'Evento', render: (value) => value || 'Sin evento' },
           { key: 'total_activos', label: 'Visitas' },
           { key: 'total_voluntarios', label: 'Servidores' },
+          {
+            key: 'id',
+            label: 'Acciones',
+            render: (_, row) => (
+              <div className="row-actions">
+                <button
+                  className="action-button ghost"
+                  type="button"
+                  onClick={() => {
+                    setEditingParticipationId(row.id)
+                    setParticipationForm({
+                      fecha: row.fecha,
+                      event_id: row.event_id ? String(row.event_id) : '',
+                      total_activos: String(row.total_activos),
+                      total_voluntarios: String(row.total_voluntarios),
+                    })
+                  }}
+                >
+                  Editar
+                </button>
+                <button
+                  className="action-button danger"
+                  type="button"
+                  onClick={async () => {
+                    if (!window.confirm('¿Eliminar este reporte de participación?')) return
+                    await onDeleteParticipationReport(row.id)
+                    if (editingParticipationId === row.id) {
+                      setEditingParticipationId(null)
+                    }
+                  }}
+                >
+                  Eliminar
+                </button>
+              </div>
+            ),
+          },
         ]}
         rows={participationHistory.data}
         loading={participationHistory.loading}

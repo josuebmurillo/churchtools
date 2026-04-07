@@ -193,6 +193,7 @@ const TrackingPanel = ({
       </label>
       <div className="tracking-layout" ref={trackingLayoutRef}>
         <GenericTable
+          className="tracking-members-table"
           columns={[
             { key: 'name', label: 'Nombre' },
             { key: 'ministry', label: 'Ministerio' },

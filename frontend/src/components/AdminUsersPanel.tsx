@@ -430,6 +430,7 @@ const AdminUsersPanel: React.FC = () => {
         )}
 
         <GenericTable<User>
+          className="admin-users-table"
           loading={isLoading}
           emptyMessage="No hay usuarios registrados."
           rows={filtered}
