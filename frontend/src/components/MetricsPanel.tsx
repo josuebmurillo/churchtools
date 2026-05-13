@@ -1,8 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
 import GenericTable from './GenericTable'
 import Panel from './Panel'
-import type { AttendanceSnapshot, Event, ParticipationSnapshot } from '../types'
+import type { AttendanceSnapshot, Event } from '../types'
 import type { ChartData, ChartOptions } from 'chart.js'
 
 type MetricsPanelProps = {
@@ -16,11 +16,6 @@ type MetricsPanelProps = {
   agePyramid: ChartData<'bar', number[], unknown>
   maritalDoughnut: ChartData<'doughnut', number[], unknown>
   maritalHasData: boolean
-  participationHistory: {
-    data: ParticipationSnapshot[]
-    loading: boolean
-    error?: string | null
-  }
   attendanceHistory: {
     data: AttendanceSnapshot[]
     loading: boolean
@@ -32,17 +27,11 @@ type MetricsPanelProps = {
   attendanceTotals: {
     total_asistencia: number
     total_visitantes: number
+    total_servidores: number
   }
-  participationTotals: {
-    total_activos: number
-    total_voluntarios: number
-  }
-  onCreateAttendanceReport: (payload: { fecha: string; event_id: number | null; total_asistencia: number; total_visitantes: number }) => Promise<void>
-  onCreateParticipationReport: (payload: { fecha: string; event_id: number | null; total_activos: number; total_voluntarios: number }) => Promise<void>
-  onUpdateAttendanceReport: (id: number, payload: { fecha: string; event_id: number | null; total_asistencia: number; total_visitantes: number }) => Promise<void>
+  onCreateAttendanceReport: (payload: { fecha: string; event_id: number | null; total_visitantes: number; total_servidores: number }) => Promise<void>
+  onUpdateAttendanceReport: (id: number, payload: { fecha: string; event_id: number | null; total_visitantes: number; total_servidores: number }) => Promise<void>
   onDeleteAttendanceReport: (id: number) => Promise<void>
-  onUpdateParticipationReport: (id: number, payload: { fecha: string; event_id: number | null; total_activos: number; total_voluntarios: number }) => Promise<void>
-  onDeleteParticipationReport: (id: number) => Promise<void>
 }
 
 const MetricsPanel = ({
@@ -56,29 +45,36 @@ const MetricsPanel = ({
   agePyramid,
   maritalDoughnut,
   maritalHasData,
-  participationHistory,
   attendanceHistory,
   participationChart,
   chartOptions,
   events,
   attendanceTotals,
-  participationTotals,
   onCreateAttendanceReport,
-  onCreateParticipationReport,
   onUpdateAttendanceReport,
   onDeleteAttendanceReport,
-  onUpdateParticipationReport,
-  onDeleteParticipationReport,
 }: MetricsPanelProps) => {
   const [isLargeScreen, setIsLargeScreen] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : false
   )
-  const [attendanceForm, setAttendanceForm] = useState({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_asistencia: '', total_visitantes: '' })
-  const [participationForm, setParticipationForm] = useState({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_activos: '', total_voluntarios: '' })
+  const [attendanceForm, setAttendanceForm] = useState({
+    fecha: new Date().toISOString().slice(0, 10),
+    event_id: '',
+    total_visitantes: '',
+    total_servidores: '',
+  })
   const [attendanceSubmitting, setAttendanceSubmitting] = useState(false)
-  const [participationSubmitting, setParticipationSubmitting] = useState(false)
   const [editingAttendanceId, setEditingAttendanceId] = useState<number | null>(null)
-  const [editingParticipationId, setEditingParticipationId] = useState<number | null>(null)
+
+  const worshipEvents = useMemo(
+    () => events.filter((item) => item.is_worship),
+    [events]
+  )
+
+  const formatEventLabel = (item: Event) => {
+    const dateLabel = item.date ? item.date.split('T')[0] : 'sin fecha'
+    return `${item.name} (${dateLabel})`
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -100,8 +96,8 @@ const MetricsPanel = ({
       const payload = {
         fecha: attendanceForm.fecha,
         event_id: attendanceForm.event_id ? Number(attendanceForm.event_id) : null,
-        total_asistencia: Number(attendanceForm.total_asistencia || 0),
         total_visitantes: Number(attendanceForm.total_visitantes || 0),
+        total_servidores: Number(attendanceForm.total_servidores || 0),
       }
       if (editingAttendanceId) {
         await onUpdateAttendanceReport(editingAttendanceId, payload)
@@ -109,31 +105,14 @@ const MetricsPanel = ({
         await onCreateAttendanceReport(payload)
       }
       setEditingAttendanceId(null)
-      setAttendanceForm({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_asistencia: '', total_visitantes: '' })
+      setAttendanceForm({
+        fecha: new Date().toISOString().slice(0, 10),
+        event_id: '',
+        total_visitantes: '',
+        total_servidores: '',
+      })
     } finally {
       setAttendanceSubmitting(false)
-    }
-  }
-
-  const handleParticipationSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setParticipationSubmitting(true)
-    try {
-      const payload = {
-        fecha: participationForm.fecha,
-        event_id: participationForm.event_id ? Number(participationForm.event_id) : null,
-        total_activos: Number(participationForm.total_activos || 0),
-        total_voluntarios: Number(participationForm.total_voluntarios || 0),
-      }
-      if (editingParticipationId) {
-        await onUpdateParticipationReport(editingParticipationId, payload)
-      } else {
-        await onCreateParticipationReport(payload)
-      }
-      setEditingParticipationId(null)
-      setParticipationForm({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_activos: '', total_voluntarios: '' })
-    } finally {
-      setParticipationSubmitting(false)
     }
   }
 
@@ -144,66 +123,66 @@ const MetricsPanel = ({
         <form className="form" onSubmit={handleAttendanceSubmit}>
           <label className="field">
             Fecha
-            <input className="input" type="date" value={attendanceForm.fecha} onChange={(event) => setAttendanceForm({ ...attendanceForm, fecha: event.target.value })} required />
+            <input
+              className="input"
+              type="date"
+              value={attendanceForm.fecha}
+              onChange={(event) => setAttendanceForm({ ...attendanceForm, fecha: event.target.value })}
+              required
+              disabled={Boolean(attendanceForm.event_id)}
+            />
           </label>
           <label className="field">
-            Evento asociado
-            <select className="input" value={attendanceForm.event_id} onChange={(event) => setAttendanceForm({ ...attendanceForm, event_id: event.target.value })}>
+            Evento culto asociado
+            <select
+              className="input"
+              value={attendanceForm.event_id}
+              onChange={(event) => {
+                const selectedEventId = event.target.value
+                if (!selectedEventId) {
+                  setAttendanceForm({
+                    ...attendanceForm,
+                    event_id: '',
+                  })
+                  return
+                }
+                const selectedEvent = worshipEvents.find((item) => item.id === Number(selectedEventId))
+                setAttendanceForm({
+                  ...attendanceForm,
+                  event_id: selectedEventId,
+                  fecha: selectedEvent?.date ? selectedEvent.date.split('T')[0] : attendanceForm.fecha,
+                })
+              }}
+            >
               <option value="">Sin evento asociado</option>
-              {events.map((item) => (
-                <option key={`attendance-event-${item.id}`} value={item.id}>{item.name}</option>
+              {worshipEvents.map((item) => (
+                <option key={`attendance-event-${item.id}`} value={item.id}>{formatEventLabel(item)}</option>
               ))}
             </select>
           </label>
           <label className="field">
-            Asistencia total
-            <input className="input" type="number" min="0" value={attendanceForm.total_asistencia} onChange={(event) => setAttendanceForm({ ...attendanceForm, total_asistencia: event.target.value })} required />
-          </label>
-          <label className="field">
             Visitantes
             <input className="input" type="number" min="0" value={attendanceForm.total_visitantes} onChange={(event) => setAttendanceForm({ ...attendanceForm, total_visitantes: event.target.value })} required />
+          </label>
+          <label className="field">
+            Servidores
+            <input className="input" type="number" min="0" value={attendanceForm.total_servidores} onChange={(event) => setAttendanceForm({ ...attendanceForm, total_servidores: event.target.value })} required />
+          </label>
+          <label className="field">
+            Asistencia total (automática)
+            <input
+              className="input"
+              type="number"
+              value={Number(attendanceForm.total_visitantes || 0) + Number(attendanceForm.total_servidores || 0)}
+              readOnly
+            />
           </label>
           <div className="row-actions">
             <button className="primary" type="submit" disabled={attendanceSubmitting}>{attendanceSubmitting ? 'Guardando…' : editingAttendanceId ? 'Actualizar asistencia' : 'Guardar asistencia'}</button>
             {editingAttendanceId && (
               <button className="action-button ghost" type="button" onClick={() => {
                 setEditingAttendanceId(null)
-                setAttendanceForm({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_asistencia: '', total_visitantes: '' })
-              }}>
-                Cancelar edición
-              </button>
-            )}
-          </div>
-        </form>
-
-        <form className="form" onSubmit={handleParticipationSubmit}>
-          <label className="field">
-            Fecha
-            <input className="input" type="date" value={participationForm.fecha} onChange={(event) => setParticipationForm({ ...participationForm, fecha: event.target.value })} required />
-          </label>
-          <label className="field">
-            Evento asociado
-            <select className="input" value={participationForm.event_id} onChange={(event) => setParticipationForm({ ...participationForm, event_id: event.target.value })}>
-              <option value="">Sin evento asociado</option>
-              {events.map((item) => (
-                <option key={`participation-event-${item.id}`} value={item.id}>{item.name}</option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            Visitas
-            <input className="input" type="number" min="0" value={participationForm.total_activos} onChange={(event) => setParticipationForm({ ...participationForm, total_activos: event.target.value })} required />
-          </label>
-          <label className="field">
-            Servidores
-            <input className="input" type="number" min="0" value={participationForm.total_voluntarios} onChange={(event) => setParticipationForm({ ...participationForm, total_voluntarios: event.target.value })} required />
-          </label>
-          <div className="row-actions">
-            <button className="primary" type="submit" disabled={participationSubmitting}>{participationSubmitting ? 'Guardando…' : editingParticipationId ? 'Actualizar participación' : 'Guardar participación'}</button>
-            {editingParticipationId && (
-              <button className="action-button ghost" type="button" onClick={() => {
-                setEditingParticipationId(null)
-                setParticipationForm({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_activos: '', total_voluntarios: '' })
+                setAttendanceForm({ fecha: new Date().toISOString().slice(0, 10), event_id: '', total_visitantes: '', total_servidores: '' })
               }}>
                 Cancelar edición
               </button>
@@ -340,14 +319,26 @@ const MetricsPanel = ({
       </div>
     </Panel>
 
-    <Panel title="Asistencia registrada" subtitle="Asistencia y visitantes por fecha y evento.">
+    <Panel title="Asistencia registrada" subtitle="Visitantes, servidores y total por fecha y evento.">
+      <div className="chart-card">
+        {attendanceHistory.loading ? (
+          <div className="table-row loading">Cargando métricas...</div>
+        ) : attendanceHistory.data.length === 0 ? (
+          <div className="table-row loading">
+            {attendanceHistory.error ?? 'No hay datos históricos disponibles.'}
+          </div>
+        ) : (
+          <Line data={participationChart} options={chartOptions} />
+        )}
+      </div>
       <GenericTable
         className="metrics-attendance-table"
         columns={[
           { key: 'fecha', label: 'Fecha' },
           { key: 'event_name', label: 'Evento', render: (value) => value || 'Sin evento' },
-          { key: 'total_asistencia', label: 'Asistencia' },
           { key: 'total_visitantes', label: 'Visitantes' },
+          { key: 'total_servidores', label: 'Servidores' },
+          { key: 'total_asistencia', label: 'Asistencia' },
           {
             key: 'id',
             label: 'Acciones',
@@ -361,8 +352,8 @@ const MetricsPanel = ({
                     setAttendanceForm({
                       fecha: row.fecha,
                       event_id: row.event_id ? String(row.event_id) : '',
-                      total_asistencia: String(row.total_asistencia),
                       total_visitantes: String(row.total_visitantes),
+                      total_servidores: String(row.total_servidores),
                     })
                   }}
                 >
@@ -391,78 +382,6 @@ const MetricsPanel = ({
       />
     </Panel>
 
-    <Panel title="Participación por fecha" subtitle="Visitas y servidores a lo largo del tiempo.">
-      <div className="chart-card">
-        {participationHistory.loading ? (
-          <div className="table-row loading">Cargando métricas...</div>
-        ) : participationHistory.data.length === 0 ? (
-          <div className="table-row loading">
-            {participationHistory.error ?? 'No hay datos históricos disponibles.'}
-          </div>
-        ) : (
-          <Line data={participationChart} options={chartOptions} />
-        )}
-      </div>
-      <GenericTable
-        className="metrics-participation-table"
-        columns={[
-          { key: 'fecha', label: 'Fecha' },
-          { key: 'event_name', label: 'Evento', render: (value) => value || 'Sin evento' },
-          { key: 'total_activos', label: 'Visitas' },
-          { key: 'total_voluntarios', label: 'Servidores' },
-          {
-            key: 'id',
-            label: 'Acciones',
-            render: (_, row) => (
-              <div className="row-actions">
-                <button
-                  className="action-button ghost"
-                  type="button"
-                  onClick={() => {
-                    setEditingParticipationId(row.id)
-                    setParticipationForm({
-                      fecha: row.fecha,
-                      event_id: row.event_id ? String(row.event_id) : '',
-                      total_activos: String(row.total_activos),
-                      total_voluntarios: String(row.total_voluntarios),
-                    })
-                  }}
-                >
-                  Editar
-                </button>
-                <button
-                  className="action-button danger"
-                  type="button"
-                  onClick={async () => {
-                    if (!window.confirm('¿Eliminar este reporte de participación?')) return
-                    await onDeleteParticipationReport(row.id)
-                    if (editingParticipationId === row.id) {
-                      setEditingParticipationId(null)
-                    }
-                  }}
-                >
-                  Eliminar
-                </button>
-              </div>
-            ),
-          },
-        ]}
-        rows={participationHistory.data}
-        loading={participationHistory.loading}
-        emptyMessage={participationHistory.error ?? 'No hay participación registrada.'}
-      />
-    </Panel>
-
-    <div className="card">
-      <div className="card-header">
-        <h3>Último corte de participación</h3>
-      </div>
-      <div className="detail">Visitas</div>
-      <strong>{participationTotals.total_activos}</strong>
-      <div className="detail">Servidores</div>
-      <strong>{participationTotals.total_voluntarios}</strong>
-    </div>
-
     <div className="card">
       <div className="card-header">
         <h3>Último corte de asistencia</h3>
@@ -471,6 +390,8 @@ const MetricsPanel = ({
       <strong>{attendanceTotals.total_asistencia}</strong>
       <div className="detail">Visitantes</div>
       <strong>{attendanceTotals.total_visitantes}</strong>
+      <div className="detail">Servidores</div>
+      <strong>{attendanceTotals.total_servidores}</strong>
     </div>
   </section>
   )

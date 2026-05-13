@@ -611,7 +611,9 @@ class TestEvents:
         payload = {"name": f"Event {uid}", "date": "2027-01-15T10:00:00"}
         resp = raw(8003, "/events", method="POST", json=payload)
         assert resp.status_code == 200, resp.text
-        assert "id" in resp.json()
+        body = resp.json()
+        assert "id" in body
+        assert body.get("is_worship") is False
 
 
 # ===========================================================================
@@ -800,29 +802,57 @@ class TestReports:
         assert resp.status_code == 200
 
     def test_reports_can_be_associated_with_event(self):
-        event_resp = raw(
+        culto_event_resp = raw(
             8003,
             "/events",
             method="POST",
-            json={"name": f"Report Event {uuid4().hex[:8]}", "date": "2027-02-01T10:00:00"},
+            json={
+                "name": f"Culto Report Event {uuid4().hex[:8]}",
+                "date": "2027-02-01T10:00:00",
+                "is_worship": True,
+            },
         )
-        assert event_resp.status_code == 200, event_resp.text
-        event_id = event_resp.json()["id"]
+        assert culto_event_resp.status_code == 200, culto_event_resp.text
+        event_id = culto_event_resp.json()["id"]
+
+        non_culto_event_resp = raw(
+            8003,
+            "/events",
+            method="POST",
+            json={"name": f"No Culto {uuid4().hex[:8]}", "date": "2027-02-03T10:00:00", "is_worship": False},
+        )
+        assert non_culto_event_resp.status_code == 200, non_culto_event_resp.text
+        non_culto_event_id = non_culto_event_resp.json()["id"]
 
         attendance_resp = raw(
             8010,
             "/reports/attendance/history",
             method="POST",
             json={
-                "fecha": "2027-02-01",
+                "fecha": "1999-01-01",
                 "event_id": event_id,
-                "total_asistencia": 150,
                 "total_visitantes": 18,
+                "total_servidores": 132,
             },
         )
         assert attendance_resp.status_code == 200, attendance_resp.text
         assert attendance_resp.json()["event_id"] == event_id
+        assert attendance_resp.json()["fecha"] == "2027-02-01"
+        assert attendance_resp.json()["total_asistencia"] == 150
         attendance_snapshot_id = attendance_resp.json()["id"]
+
+        rejected_attendance_resp = raw(
+            8010,
+            "/reports/attendance/history",
+            method="POST",
+            json={
+                "fecha": "2027-02-03",
+                "event_id": non_culto_event_id,
+                "total_visitantes": 10,
+                "total_servidores": 20,
+            },
+        )
+        assert rejected_attendance_resp.status_code == 400
 
         participation_resp = raw(
             8010,
@@ -844,14 +874,15 @@ class TestReports:
             f"/reports/attendance/history/{attendance_snapshot_id}",
             method="PUT",
             json={
-                "fecha": "2027-02-02",
+                "fecha": "2040-01-01",
                 "event_id": event_id,
-                "total_asistencia": 160,
                 "total_visitantes": 20,
+                "total_servidores": 140,
             },
         )
         assert attendance_update.status_code == 200, attendance_update.text
         assert attendance_update.json()["total_asistencia"] == 160
+        assert attendance_update.json()["fecha"] == "2027-02-01"
 
         participation_update = raw(
             8010,

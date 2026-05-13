@@ -31,7 +31,7 @@ import {
   buildAgePyramid,
   buildGenderDoughnut,
   buildMaritalDoughnut,
-  buildParticipationChart,
+  buildAttendanceChart,
   defaultChartOptions,
 } from '../utils/metrics'
 import type {
@@ -44,7 +44,6 @@ import type {
   Facility,
   Ministry,
   ParticipationReport,
-  ParticipationSnapshot,
   Person,
   PersonDiscipleshipRecord,
   Reservation,
@@ -152,14 +151,11 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
   const attendance = useApiData<AttendanceReport>(buildUrl('reports', '/reports/attendance'), {
     total_asistencia: 0,
     total_visitantes: 0,
+    total_servidores: 0,
     event_id: null,
   })
   const attendanceHistory = useApiData<AttendanceSnapshot[]>(
     buildUrl('reports', '/reports/attendance/history'),
-    []
-  )
-  const participationHistory = useApiData<ParticipationSnapshot[]>(
-    buildUrl('reports', '/reports/participation/history'),
     []
   )
 
@@ -177,6 +173,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
     date: '',
     ministry_id: '',
     schedule: '',
+    is_worship: false,
     timeline_blocks: '',
   })
   const [calendarReservationForm, setCalendarReservationForm] = useState({
@@ -623,8 +620,8 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
   }, [events.data, reservations.data])
 
   const participationChart = useMemo(
-    () => buildParticipationChart(participationHistory.data),
-    [participationHistory.data]
+    () => buildAttendanceChart(attendanceHistory.data),
+    [attendanceHistory.data]
   )
 
   const attendanceHistoryWithEvents = useMemo(
@@ -633,14 +630,6 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
       event_name: item.event_id ? eventsById.get(item.event_id)?.name ?? 'Evento no encontrado' : 'Sin evento',
     })),
     [attendanceHistory.data, eventsById]
-  )
-
-  const participationHistoryWithEvents = useMemo(
-    () => participationHistory.data.map((item) => ({
-      ...item,
-      event_name: item.event_id ? eventsById.get(item.event_id)?.name ?? 'Evento no encontrado' : 'Sin evento',
-    })),
-    [participationHistory.data, eventsById]
   )
 
   const chartOptions = defaultChartOptions
@@ -850,6 +839,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
       date: '',
       ministry_id: '',
       schedule: '',
+      is_worship: false,
       timeline_blocks: '',
     })
     setCalendarReservationForm({
@@ -884,6 +874,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
         date: calendarEventForm.date || null,
         ministry_id: calendarEventForm.ministry_id ? Number(calendarEventForm.ministry_id) : null,
         schedule: calendarEventForm.schedule || null,
+        is_worship: calendarEventForm.is_worship,
       }
 
       let eventId = calendarEventForm.id ? Number(calendarEventForm.id) : null
@@ -1144,7 +1135,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
     }
   }
 
-  const handleCreateAttendanceReport = async (payload: { fecha: string; event_id: number | null; total_asistencia: number; total_visitantes: number }) => {
+  const handleCreateAttendanceReport = async (payload: { fecha: string; event_id: number | null; total_visitantes: number; total_servidores: number }) => {
     setActionStatus(null)
     try {
       await postJson(buildUrl('reports', '/reports/attendance/history'), payload)
@@ -1157,20 +1148,7 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
     }
   }
 
-  const handleCreateParticipationReport = async (payload: { fecha: string; event_id: number | null; total_activos: number; total_voluntarios: number }) => {
-    setActionStatus(null)
-    try {
-      await postJson(buildUrl('reports', '/reports/participation/history'), payload)
-      participation.refresh()
-      participationHistory.refresh()
-      setActionStatus('Reporte de participación guardado')
-    } catch (err) {
-      setActionStatus(err instanceof Error ? err.message : 'Error guardando reporte de participación')
-      throw err
-    }
-  }
-
-  const handleUpdateAttendanceReport = async (id: number, payload: { fecha: string; event_id: number | null; total_asistencia: number; total_visitantes: number }) => {
+  const handleUpdateAttendanceReport = async (id: number, payload: { fecha: string; event_id: number | null; total_visitantes: number; total_servidores: number }) => {
     setActionStatus(null)
     try {
       await fetchJson(buildUrl('reports', `/reports/attendance/history/${id}`), {
@@ -1198,38 +1176,6 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
       setActionStatus('Reporte de asistencia eliminado')
     } catch (err) {
       setActionStatus(err instanceof Error ? err.message : 'Error eliminando reporte de asistencia')
-      throw err
-    }
-  }
-
-  const handleUpdateParticipationReport = async (id: number, payload: { fecha: string; event_id: number | null; total_activos: number; total_voluntarios: number }) => {
-    setActionStatus(null)
-    try {
-      await fetchJson(buildUrl('reports', `/reports/participation/history/${id}`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      participation.refresh()
-      participationHistory.refresh()
-      setActionStatus('Reporte de participación actualizado')
-    } catch (err) {
-      setActionStatus(err instanceof Error ? err.message : 'Error actualizando reporte de participación')
-      throw err
-    }
-  }
-
-  const handleDeleteParticipationReport = async (id: number) => {
-    setActionStatus(null)
-    try {
-      await fetchJson(buildUrl('reports', `/reports/participation/history/${id}`), {
-        method: 'DELETE',
-      })
-      participation.refresh()
-      participationHistory.refresh()
-      setActionStatus('Reporte de participación eliminado')
-    } catch (err) {
-      setActionStatus(err instanceof Error ? err.message : 'Error eliminando reporte de participación')
       throw err
     }
   }
@@ -1461,18 +1407,13 @@ const AdminApp = ({ onLogout }: AdminAppProps) => {
             maritalDoughnut={maritalDoughnut}
             maritalHasData={demographicSummary.maritalList.length > 0}
             attendanceHistory={{ ...attendanceHistory, data: attendanceHistoryWithEvents }}
-            participationHistory={{ ...participationHistory, data: participationHistoryWithEvents }}
             participationChart={participationChart}
             chartOptions={chartOptions}
             events={events.data}
             attendanceTotals={attendance.data}
-            participationTotals={participation.data}
             onCreateAttendanceReport={handleCreateAttendanceReport}
-            onCreateParticipationReport={handleCreateParticipationReport}
             onUpdateAttendanceReport={handleUpdateAttendanceReport}
             onDeleteAttendanceReport={handleDeleteAttendanceReport}
-            onUpdateParticipationReport={handleUpdateParticipationReport}
-            onDeleteParticipationReport={handleDeleteParticipationReport}
           />
         )}
 

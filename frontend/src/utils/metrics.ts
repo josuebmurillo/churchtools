@@ -1,4 +1,4 @@
-import type { ParticipationSnapshot } from '../types'
+import type { AttendanceSnapshot, ParticipationSnapshot } from '../types'
 
 type AgeBuckets = {
   '0-12': number
@@ -66,6 +66,37 @@ export const buildMaritalDoughnut = (maritalList: Array<[string, number]>) => {
   }
 }
 
+export const buildAttendanceChart = (history: AttendanceSnapshot[]) => ({
+  labels: history.map((item) => item.fecha),
+  datasets: [
+    {
+      label: 'Visitantes',
+      data: history.map((item) => item.total_visitantes),
+      borderColor: '#60a5fa',
+      backgroundColor: 'rgba(96, 165, 250, 0.2)',
+      tension: 0.3,
+      fill: true,
+    },
+    {
+      label: 'Servidores',
+      data: history.map((item) => item.total_servidores),
+      borderColor: '#f472b6',
+      backgroundColor: 'rgba(244, 114, 182, 0.2)',
+      tension: 0.3,
+      fill: true,
+    },
+    {
+      label: 'Total asistencia',
+      data: history.map((item) => item.total_asistencia),
+      borderColor: '#34d399',
+      backgroundColor: 'rgba(52, 211, 153, 0.1)',
+      tension: 0.3,
+      fill: false,
+    },
+  ],
+})
+
+/** @deprecated use buildAttendanceChart */
 export const buildParticipationChart = (history: ParticipationSnapshot[]) => ({
   labels: history.map((item) => item.fecha),
   datasets: [

@@ -3,9 +3,13 @@ from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from sqlalchemy import create_engine, Column, Integer, String, Text, func, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
+from urllib import error, request
+import json
 import os
 
 app = FastAPI(title="Music Service", version="0.1.0")
+
+EVENTS_SERVICE_URL = os.getenv("EVENTS_SERVICE_URL", "http://events:8000")
 
 DATABASE_URL = os.getenv("MUSIC_DATABASE_URL", "sqlite:///./music.db")
 connect_args = {}
@@ -50,6 +54,8 @@ def on_startup():
     Base.metadata.create_all(bind=engine)
     ensure_song_columns()
     with SessionLocal() as db:
+        reconcile_repertoires_with_events(db)
+        deduplicate_all_repertoires(db)
         normalize_all_repertoire_songs(db)
         db.commit()
 
@@ -141,6 +147,128 @@ def normalize_all_repertoire_songs(db):
     return len(repertoire_ids)
 
 
+def deduplicate_repertoires_for_event(db, event_id: int):
+    repertoires = (
+        db.query(RepertoireModel)
+        .filter_by(event_id=event_id)
+        .order_by(RepertoireModel.id.asc())
+        .all()
+    )
+    if not repertoires:
+        return None
+
+    def repertoire_sort_key(repertoire: RepertoireModel):
+        song_count = (
+            db.query(func.count(RepertoireSongModel.id))
+            .filter_by(repertoire_id=repertoire.id)
+            .scalar()
+            or 0
+        )
+        return (-song_count, repertoire.id)
+
+    primary = min(repertoires, key=repertoire_sort_key)
+    existing_song_ids = {
+        song_id
+        for (song_id,) in db.query(RepertoireSongModel.song_id)
+        .filter_by(repertoire_id=primary.id)
+        .all()
+    }
+
+    for duplicate in repertoires:
+        if duplicate.id == primary.id:
+            continue
+
+        duplicate_items = (
+            db.query(RepertoireSongModel)
+            .filter_by(repertoire_id=duplicate.id)
+            .order_by(RepertoireSongModel.orden.asc(), RepertoireSongModel.id.asc())
+            .all()
+        )
+        for item in duplicate_items:
+            if item.song_id in existing_song_ids:
+                db.delete(item)
+                continue
+            item.repertoire_id = primary.id
+            existing_song_ids.add(item.song_id)
+        db.delete(duplicate)
+
+    renumber_repertoire_songs(db, primary.id)
+    return primary
+
+
+def deduplicate_all_repertoires(db):
+    event_ids = [
+        event_id
+        for (event_id,) in db.query(RepertoireModel.event_id)
+        .distinct()
+        .all()
+    ]
+    for event_id in event_ids:
+        deduplicate_repertoires_for_event(db, event_id)
+
+
+def ensure_repertoire_for_event(db, event_id: int):
+    repertoire = deduplicate_repertoires_for_event(db, event_id)
+    if repertoire:
+        return repertoire
+
+    repertoire = RepertoireModel(event_id=event_id)
+    db.add(repertoire)
+    db.commit()
+    db.refresh(repertoire)
+    return repertoire
+
+
+def delete_repertoire_and_songs(db, repertoire: RepertoireModel):
+    linked_items = db.query(RepertoireSongModel).filter_by(repertoire_id=repertoire.id).all()
+    for item in linked_items:
+        db.delete(item)
+    db.delete(repertoire)
+
+
+def delete_repertoires_for_event(db, event_id: int):
+    repertoires = db.query(RepertoireModel).filter_by(event_id=event_id).all()
+    deleted_ids: list[int] = []
+    for repertoire in repertoires:
+        deleted_ids.append(repertoire.id)
+        delete_repertoire_and_songs(db, repertoire)
+    return deleted_ids
+
+
+def reconcile_repertoires_with_events(db):
+    try:
+        with request.urlopen(f"{EVENTS_SERVICE_URL}/events", timeout=10) as response:
+            events = json.loads(response.read().decode())
+        with request.urlopen(f"{EVENTS_SERVICE_URL}/event-schedules", timeout=10) as response:
+            schedules = json.loads(response.read().decode())
+    except (error.URLError, error.HTTPError, json.JSONDecodeError):
+        return
+
+    existing_event_ids = {event["id"] for event in events if "id" in event}
+    visible_event_ids = {
+        schedule["event_id"]
+        for schedule in schedules
+        if schedule.get("event_id") in existing_event_ids
+        and isinstance(schedule.get("tipo"), str)
+        and (
+            schedule["tipo"].strip().lower() == "worship"
+            or "alabanza" in schedule["tipo"].lower()
+            or "adoracion" in schedule["tipo"].lower()
+            or "adoración" in schedule["tipo"].lower()
+        )
+    }
+
+    repertoire_event_ids = [
+        event_id
+        for (event_id,) in db.query(RepertoireModel.event_id)
+        .distinct()
+        .all()
+    ]
+    for event_id in repertoire_event_ids:
+        if event_id not in visible_event_ids:
+            delete_repertoires_for_event(db, event_id)
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "music"}
@@ -228,16 +356,16 @@ def delete_song(song_id: int):
 @app.get("/repertoires")
 def list_repertoires():
     with SessionLocal() as db:
+        reconcile_repertoires_with_events(db)
+        deduplicate_all_repertoires(db)
+        db.commit()
         return db.query(RepertoireModel).all()
 
 
 @app.post("/repertoires", response_model=Repertoire)
 def create_repertoire(payload: RepertoireCreate):
     with SessionLocal() as db:
-        repertoire = RepertoireModel(**payload.dict())
-        db.add(repertoire)
-        db.commit()
-        db.refresh(repertoire)
+        repertoire = ensure_repertoire_for_event(db, payload.event_id)
         return repertoire
 
 
@@ -269,9 +397,17 @@ def delete_repertoire(repertoire_id: int):
         repertoire = db.get(RepertoireModel, repertoire_id)
         if not repertoire:
             raise HTTPException(status_code=404, detail="Repertoire not found")
-        db.delete(repertoire)
+        delete_repertoire_and_songs(db, repertoire)
         db.commit()
         return {"deleted": True, "id": repertoire_id}
+
+
+@app.delete("/repertoires/by-event/{event_id}")
+def delete_repertoire_by_event(event_id: int):
+    with SessionLocal() as db:
+        deleted_ids = delete_repertoires_for_event(db, event_id)
+        db.commit()
+        return {"deleted": True, "event_id": event_id, "repertoire_ids": deleted_ids}
 
 
 @app.get("/repertoire-songs")

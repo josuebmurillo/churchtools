@@ -29,6 +29,20 @@ def post_json(path: str, payload: dict, token: str | None = None) -> httpx.Respo
     return httpx.post(f"{BASE_URL}{path}", json=payload, timeout=10.0, headers=headers)
 
 
+def delete_path(path: str, token: str | None = None) -> httpx.Response:
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return httpx.delete(f"{BASE_URL}{path}", timeout=10.0, headers=headers)
+
+
+def get_json(path: str, token: str | None = None) -> httpx.Response:
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return httpx.get(f"{BASE_URL}{path}", timeout=10.0, headers=headers)
+
+
 def test_ministries_rules():
     token = admin_token()
     person = post_json(
@@ -88,6 +102,95 @@ def test_music_rules():
         token=token,
     )
     assert dup_item.status_code == 400
+
+
+def test_worship_schedule_creates_and_deletes_setlist():
+    token = admin_token()
+    event = post_json(
+        "/events/events",
+        {
+            "name": "Culto Test " + uuid4().hex[:8],
+            "date": "2026-06-15T19:00:00",
+            "ministry_id": None,
+            "schedule": None,
+            "is_worship": True,
+        },
+        token=token,
+    )
+    assert event.status_code == 200, event.text
+    event_id = event.json()["id"]
+
+    try:
+        schedule = post_json(
+            "/events/event-schedules",
+            {
+                "event_id": event_id,
+                "inicio": "2026-06-15T19:00:00",
+                "fin": "2026-06-15T19:30:00",
+                "tipo": "Alabanza y adoracion",
+                "observacion": None,
+                "encargado_person_id": None,
+            },
+            token=token,
+        )
+        assert schedule.status_code == 200, schedule.text
+        schedule_id = schedule.json()["id"]
+
+        repertoires = get_json("/music/repertoires", token=token)
+        assert repertoires.status_code == 200, repertoires.text
+        event_repertoires = [item for item in repertoires.json() if item["event_id"] == event_id]
+        assert len(event_repertoires) == 1
+
+        deleted_schedule = delete_path(f"/events/event-schedules/{schedule_id}", token=token)
+        assert deleted_schedule.status_code == 200, deleted_schedule.text
+
+        repertoires_after_delete = get_json("/music/repertoires", token=token)
+        assert repertoires_after_delete.status_code == 200, repertoires_after_delete.text
+        assert [item for item in repertoires_after_delete.json() if item["event_id"] == event_id] == []
+    finally:
+        delete_path(f"/events/events/{event_id}", token=token)
+
+
+def test_deleting_event_removes_setlist():
+    token = admin_token()
+    event = post_json(
+        "/events/events",
+        {
+            "name": "Culto Delete Test " + uuid4().hex[:8],
+            "date": "2026-06-16T19:00:00",
+            "ministry_id": None,
+            "schedule": None,
+            "is_worship": True,
+        },
+        token=token,
+    )
+    assert event.status_code == 200, event.text
+    event_id = event.json()["id"]
+
+    schedule = post_json(
+        "/events/event-schedules",
+        {
+            "event_id": event_id,
+            "inicio": "2026-06-16T19:00:00",
+            "fin": "2026-06-16T19:30:00",
+            "tipo": "Alabanza y adoracion",
+            "observacion": None,
+            "encargado_person_id": None,
+        },
+        token=token,
+    )
+    assert schedule.status_code == 200, schedule.text
+
+    repertoires = get_json("/music/repertoires", token=token)
+    assert repertoires.status_code == 200, repertoires.text
+    assert len([item for item in repertoires.json() if item["event_id"] == event_id]) == 1
+
+    deleted_event = delete_path(f"/events/events/{event_id}", token=token)
+    assert deleted_event.status_code == 200, deleted_event.text
+
+    repertoires_after_delete = get_json("/music/repertoires", token=token)
+    assert repertoires_after_delete.status_code == 200, repertoires_after_delete.text
+    assert [item for item in repertoires_after_delete.json() if item["event_id"] == event_id] == []
 
 
 def test_comms_rules():

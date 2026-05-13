@@ -821,6 +821,32 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
     return [...ordered, ...remaining]
   }, [selectedRepertoire, repertoireSongs.data, songsById, setlistOrderOverrideIds])
 
+  const recentRepertoires = useMemo(() => {
+    return rehearsalCards
+      .filter((item) => item.repertoire)
+      .map((item) => {
+        const repertoire = item.repertoire as Repertoire
+        const songs = repertoireSongs.data
+          .filter((song) => song.repertoire_id === repertoire.id)
+          .sort((a, b) => (a.orden ?? 999) - (b.orden ?? 999))
+          .map((song) => songsById.get(song.song_id)?.name ?? `Canción #${song.song_id}`)
+
+        return {
+          id: repertoire.id,
+          eventId: repertoire.event_id,
+          eventName: item.eventName,
+          date: item.date?.split('T')[0] ?? 'Sin fecha',
+          songs,
+        }
+      })
+      .sort((a, b) => {
+        const dateOrder = b.date.localeCompare(a.date)
+        if (dateOrder !== 0) return dateOrder
+        return b.id - a.id
+      })
+      .slice(0, 4)
+  }, [rehearsalCards, repertoireSongs.data, songsById])
+
   const setlistSongs = useMemo(() => {
     return setlistEditorItems
   }, [setlistEditorItems])
@@ -3449,6 +3475,57 @@ const MusicApp = ({ onLogout }: MusicAppProps) => {
               subtitle="Gestiona el setlist con CRUD, eligiendo aquí mismo el culto/evento."
               className="module-panel--full"
             >
+              <div className="music-setlist-recent-card" role="region" aria-label="Repertorios recientes">
+                <div className="music-setlist-recent-card__header">
+                  <div>
+                    <h4>Últimos 4 repertorios</h4>
+                    <p>Referencia rápida de repertorios recientes y sus canciones antes de editar.</p>
+                  </div>
+                </div>
+
+                {recentRepertoires.length === 0 ? (
+                  <div className="table-row loading">Aún no hay repertorios para mostrar.</div>
+                ) : (
+                  <div className="music-setlist-recent-table-wrap">
+                    <table className="music-setlist-recent-table">
+                      <thead>
+                        <tr>
+                          <th>Evento</th>
+                          <th>Fecha</th>
+                          <th>Canciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentRepertoires.map((item) => (
+                          <tr key={`recent-repertoire-${item.id}`}>
+                            <td>
+                              <div className="music-setlist-recent-event">
+                                <strong>{item.eventName}</strong>
+                                <span>Repertorio #{item.id}</span>
+                              </div>
+                            </td>
+                            <td>{item.date}</td>
+                            <td>
+                              {item.songs.length === 0 ? (
+                                <span className="muted">Sin canciones</span>
+                              ) : (
+                                <div className="music-setlist-recent-songs">
+                                  {item.songs.map((songName, index) => (
+                                    <span key={`recent-repertoire-${item.id}-song-${index}`} className="music-setlist-recent-song-chip">
+                                      {index + 1}. {songName}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               <label className="field">
                 Culto / Evento a editar
                 <select

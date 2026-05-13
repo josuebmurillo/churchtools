@@ -113,6 +113,35 @@ Comando único (desde la raíz) para generar y aplicar en todos los servicios:
 
 ## Testing
 
+## Dataset demo (sin musica)
+
+Se incluye un gestor para analizar, limpiar y regenerar datos realistas de demo excluyendo canciones/repertorios.
+
+Script: `scripts/demo_data_manager.py`
+
+```bash
+# Ver huella actual de datos
+python3 scripts/demo_data_manager.py analyze
+
+# Limpiar datos de dominios no-musica (destructivo)
+python3 scripts/demo_data_manager.py reset --yes
+
+# Sembrar un dataset realista
+python3 scripts/demo_data_manager.py seed
+
+# Flujo completo: limpiar + sembrar + analizar
+python3 scripts/demo_data_manager.py refresh-demo --yes
+```
+
+Credenciales por defecto usadas por el script:
+- Usuario: `admin@iglesia.com`
+- Password: `Admin2026`
+
+Opciones utiles:
+- `--base-url` para gateway (default `http://localhost:8000`)
+- `--auth-url` para security (default `http://localhost:8009`)
+- `--identifier` y `--password` para otro usuario
+
 ### Suite de Tests Automatizados
 Cobertura completa: **81 tests** verificando todos los 15 servicios + gateway + auth + RBAC/permisos + validaciones de negocio.
 

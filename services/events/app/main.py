@@ -1,11 +1,15 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
-from sqlalchemy import create_engine, Column, Integer, String, inspect, text
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
+from urllib import error, request
+import json
 import os
 
 app = FastAPI(title="Events Service", version="0.1.0")
+
+MUSIC_SERVICE_URL = os.getenv("MUSIC_SERVICE_URL", "http://music:8000")
 
 DATABASE_URL = os.getenv("EVENTS_DATABASE_URL", "sqlite:///./events.db")
 connect_args = {}
@@ -24,6 +28,7 @@ class EventModel(Base):
     date = Column(String, nullable=True)
     ministry_id = Column(Integer, nullable=True)
     schedule = Column(String, nullable=True)
+    is_worship = Column(Boolean, nullable=False, default=False)
 
 
 class EventScheduleModel(Base):
@@ -48,7 +53,27 @@ class EventAssignmentModel(Base):
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    ensure_events_is_worship_column()
     ensure_event_schedules_extra_columns()
+
+
+def ensure_events_is_worship_column():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+    if "events" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("events")}
+    if "is_worship" in columns:
+        return
+
+    with engine.begin() as connection:
+        if engine.dialect.name == "sqlite":
+            connection.execute(text("ALTER TABLE events ADD COLUMN is_worship BOOLEAN DEFAULT 0"))
+            connection.execute(text("UPDATE events SET is_worship = 0 WHERE is_worship IS NULL"))
+        else:
+            connection.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS is_worship BOOLEAN DEFAULT FALSE"))
+            connection.execute(text("UPDATE events SET is_worship = FALSE WHERE is_worship IS NULL"))
 
 
 def ensure_event_schedules_extra_columns():
@@ -77,6 +102,7 @@ class EventCreate(BaseModel):
     date: Optional[str] = None
     ministry_id: Optional[int] = None
     schedule: Optional[str] = None
+    is_worship: bool = False
 
 
 class Event(EventCreate):
@@ -107,6 +133,44 @@ class EventAssignmentCreate(BaseModel):
 class EventAssignment(EventAssignmentCreate):
     id: int
     model_config = ConfigDict(from_attributes=True)
+
+
+def is_worship_timeline_type(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    normalized = value.strip().lower()
+    return normalized == "worship" or "alabanza" in normalized or "adoracion" in normalized or "adoración" in normalized
+
+
+def event_has_worship_schedule(db, event_id: int) -> bool:
+    schedules = db.query(EventScheduleModel).filter_by(event_id=event_id).all()
+    return any(is_worship_timeline_type(schedule.tipo) for schedule in schedules)
+
+
+def sync_repertoire_for_event(db, event_id: int) -> None:
+    has_worship_schedule = event_has_worship_schedule(db, event_id)
+    if has_worship_schedule:
+        payload = json.dumps({"event_id": event_id}).encode()
+        req = request.Request(
+            f"{MUSIC_SERVICE_URL}/repertoires",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+    else:
+        req = request.Request(
+            f"{MUSIC_SERVICE_URL}/repertoires/by-event/{event_id}",
+            method="DELETE",
+        )
+
+    try:
+        with request.urlopen(req, timeout=10):
+            return
+    except error.HTTPError as exc:
+        detail = exc.read().decode() if exc.fp else exc.reason
+        raise HTTPException(status_code=502, detail=f"Music sync failed: {detail}") from exc
+    except error.URLError as exc:
+        raise HTTPException(status_code=502, detail="Music service unavailable") from exc
 
 
 @app.get("/health")
@@ -158,8 +222,15 @@ def delete_event(event_id: int):
         event = db.get(EventModel, event_id)
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
+        schedules = db.query(EventScheduleModel).filter_by(event_id=event_id).all()
+        assignments = db.query(EventAssignmentModel).filter_by(event_id=event_id).all()
+        for schedule in schedules:
+            db.delete(schedule)
+        for assignment in assignments:
+            db.delete(assignment)
         db.delete(event)
         db.commit()
+        sync_repertoire_for_event(db, event_id)
         return {"deleted": True, "id": event_id}
 
 
@@ -181,6 +252,7 @@ def create_schedule(payload: EventScheduleCreate):
         db.add(schedule)
         db.commit()
         db.refresh(schedule)
+        sync_repertoire_for_event(db, payload.event_id)
         return schedule
 
 
@@ -199,6 +271,7 @@ def update_schedule(schedule_id: int, payload: EventScheduleCreate):
         schedule = db.get(EventScheduleModel, schedule_id)
         if not schedule:
             raise HTTPException(status_code=404, detail="Schedule not found")
+        previous_event_id = schedule.event_id
         event = db.get(EventModel, payload.event_id)
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
@@ -208,6 +281,9 @@ def update_schedule(schedule_id: int, payload: EventScheduleCreate):
             setattr(schedule, key, value)
         db.commit()
         db.refresh(schedule)
+        sync_repertoire_for_event(db, previous_event_id)
+        if payload.event_id != previous_event_id:
+            sync_repertoire_for_event(db, payload.event_id)
         return schedule
 
 
@@ -217,8 +293,10 @@ def delete_schedule(schedule_id: int):
         schedule = db.get(EventScheduleModel, schedule_id)
         if not schedule:
             raise HTTPException(status_code=404, detail="Schedule not found")
+        event_id = schedule.event_id
         db.delete(schedule)
         db.commit()
+        sync_repertoire_for_event(db, event_id)
         return {"deleted": True, "id": schedule_id}
 
 

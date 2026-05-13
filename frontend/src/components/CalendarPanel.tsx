@@ -8,6 +8,7 @@ type CalendarEventForm = {
   date: string
   ministry_id: string
   schedule: string
+  is_worship: boolean
   timeline_blocks: string
 }
 
@@ -561,6 +562,7 @@ const CalendarPanel = ({
                               ? String(selectedEvent.ministry_id)
                               : '',
                             schedule: selectedEvent.schedule ?? '',
+                            is_worship: Boolean(selectedEvent.is_worship),
                             timeline_blocks: timelineByEventId.get(selectedEvent.id) ?? '',
                           })
                         }
@@ -691,6 +693,22 @@ const CalendarPanel = ({
                 }
                 placeholder="Ej: Culto dominical"
               />
+            </label>
+            <label className="field">
+              <span style={{ marginBottom: '0.35rem' }}>Clasificación</span>
+              <label className="inline-checkbox">
+                <input
+                  type="checkbox"
+                  checked={calendarEventForm.is_worship}
+                  onChange={(event) =>
+                    setCalendarEventForm({
+                      ...calendarEventForm,
+                      is_worship: event.target.checked,
+                    })
+                  }
+                />
+                <span>Es culto</span>
+              </label>
             </label>
             <label className="field">
               Cronograma (bloques)

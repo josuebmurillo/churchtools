@@ -4,10 +4,10 @@ export type Column = {
 }
 
 export type Ministry = { id: number; name: string; description?: string | null; parent_id?: number | null }
-export type Event = { id: number; name: string; date?: string | null; ministry_id?: number | null; schedule?: string | null }
+export type Event = { id: number; name: string; date?: string | null; ministry_id?: number | null; schedule?: string | null; is_worship: boolean }
 export type EventSchedule = { id: number; event_id: number; inicio?: string | null; fin?: string | null; tipo?: string | null; observacion?: string | null; encargado_person_id?: number | null }
-export type AttendanceReport = { total_asistencia: number; total_visitantes: number; event_id?: number | null }
-export type AttendanceSnapshot = { id: number; fecha: string; event_id?: number | null; total_asistencia: number; total_visitantes: number; event_name?: string }
+export type AttendanceReport = { total_asistencia: number; total_visitantes: number; total_servidores: number; event_id?: number | null }
+export type AttendanceSnapshot = { id: number; fecha: string; event_id?: number | null; total_asistencia: number; total_visitantes: number; total_servidores: number; event_name?: string }
 export type ParticipationReport = { total_activos: number; total_voluntarios: number; event_id?: number | null }
 export type ParticipationSnapshot = { id: number; fecha: string; event_id?: number | null; total_activos: number; total_voluntarios: number; event_name?: string }
 export type Team = { id: number; name: string; ministry_id?: number | null; description?: string | null }
